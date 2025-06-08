@@ -1,27 +1,36 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import os
 
-TOKEN = 'MTM4MDY0NjM0NDk3NjQ5ODc3OA.GChJUB.g9vO2G2oCJpnSykkzkVYxK8dyYq_01yUZ6wMuc'
+# Replace this with your actual bot token securely (e.g. from environment variables)
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-# Intents richiesti
+# Make sure TOKEN is set
+if TOKEN is None:
+    raise ValueError("Please set the DISCORD_BOT_TOKEN environment variable.")
+
+# Set up Discord intents
 intents = discord.Intents.default()
 
-# Creazione client
+# Initialize the bot
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Comando /hello
+# When the bot is ready
 @bot.event
 async def on_ready():
-    print(f'{bot.user} è online!')
+    print(f'Bot is online as {bot.user}')
     try:
         synced = await bot.tree.sync()
-        print(f"Comandi slash sincronizzati: {len(synced)}")
+        print(f'Successfully synced {len(synced)} slash command(s).')
     except Exception as e:
-        print(f"Errore nella sincronizzazione dei comandi slash: {e}")
+        print(f'Failed to sync commands: {e}')
 
-@bot.tree.command(name="hello", description="Saluta il bot!")
+# Define a /hello slash command
+@bot.tree.command(name="hello", description="Say hi to the bot!")
 async def hello(interaction: discord.Interaction):
     await interaction.response.send_message("Hi!")
 
+# Run the bot
 bot.run(TOKEN)
+
