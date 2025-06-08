@@ -4,7 +4,7 @@ from discord.ext import commands
 import os
 
 # Replace this with your actual bot token securely (e.g. from environment variables)
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+TOKEN = os.getenv("MTM4MDY0NjM0NDk3NjQ5ODc3OA.GChJUB.g9vO2G2oCJpnSykkzkVYxK8dyYq_01yUZ6wMuc")
 
 # Make sure TOKEN is set
 if TOKEN is None:
