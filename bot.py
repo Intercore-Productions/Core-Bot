@@ -1143,10 +1143,13 @@ async def start_config_steps(interaction, session_id):
     view = discord.ui.View()
     btn_skip = discord.ui.Button(label="Skip", style=discord.ButtonStyle.gray)
     async def skip_callback(interaction: discord.Interaction):
-        session.welcoming_channel = None
-        await interaction.response.edit_message(embed=embed, view=None)
-        await interaction.followup.send("Skipped welcoming channel configuration.", ephemeral=True)
-        await start_config_steps(interaction, session_id)
+       if interaction.user.id != user.id:
+           await interaction.response.send_message("Only the command author can skip.", ephemeral=True)
+           return
+    session.welcoming_channel = None
+    await interaction.message.delete()
+    # Prosegui direttamente allo step successivo (Welcome Text)
+    await next_welcome_text_step(interaction, session_id)
     btn_skip.callback = skip_callback
     view.add_item(btn_skip)
     btn_cancel = discord.ui.Button(label="Delete Configuration", style=discord.ButtonStyle.red, custom_id="cancel10")
@@ -1183,6 +1186,17 @@ async def start_config_steps(interaction, session_id):
     btn11.callback = cancel_callback
     view.add_item(btn11)
     msg = await channel.send(embed=embed, view=view)
+    btn_skip_text = discord.ui.Button(label="Skip", style=discord.ButtonStyle.gray)
+    async def skip_text_callback(interaction: discord.Interaction):
+        if interaction.user.id != user.id:
+            await interaction.response.send_message("Only the command author can skip.", ephemeral=True)
+            return
+    session.welcome_text = None
+    await interaction.message.delete()
+    # Prosegui alla schermata finale (riepilogo e conferma)
+    await show_config_summary(interaction, session_id)
+    btn_skip_text.callback = skip_text_callback
+    view.add_item(btn_skip_text)
     try:
         reply = await bot.wait_for('message', check=check, timeout=180)
         session.welcome_text = reply.content.strip()
