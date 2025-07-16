@@ -728,7 +728,7 @@ async def session(
         except Exception:
             pass
         embed = discord.Embed(
-            title="SSD | Server Shout Down",
+            title="SSD | Server Shut Down",  # Fixed Grammar Error
             description=f"The session hosted by {interaction.user.mention} has ended. Thank you for participating! See you soon!",
             color=discord.Color.orange()
         )
@@ -915,7 +915,7 @@ class ConfirmConfigView(discord.ui.View):
         self.value = None
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def confirm(self, interaction: discord.Interaction, buttoSn: discord.ui.Button):
         if interaction.user.id != self.author_id:
             await interaction.response.send_message("Only the command author can confirm.", ephemeral=True)
             return
@@ -936,6 +936,10 @@ class ConfirmConfigView(discord.ui.View):
         await interaction.response.send_message("Configuration cancelled.", ephemeral=True)
 
 async def start_config_steps(interaction, session_id):
+    # Check for administrator permission
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Only server administrators can start the configuration.", ephemeral=True)
+        return
     session = config_sessions.get(session_id)
     if not session:
         return
@@ -1132,6 +1136,7 @@ async def start_config_steps(interaction, session_id):
         config_sessions.pop(session_id, None)
         await channel.send("Configuration timed out.", delete_after=10)
         return
+    # Welcoming Channel Step
     embed = discord.Embed(
         title="Welcoming Configuration: Welcoming Channel",
         description=(
@@ -1143,12 +1148,89 @@ async def start_config_steps(interaction, session_id):
     view = discord.ui.View()
     btn_skip = discord.ui.Button(label="Skip", style=discord.ButtonStyle.gray)
     async def skip_callback(interaction: discord.Interaction):
-       if interaction.user.id != user.id:
-           await interaction.response.send_message("Only the command author can skip.", ephemeral=True)
-           return
-    session.welcoming_channel = None
-    await interaction.message.delete()
-    await next_welcome_text_step(interaction, session_id)
+        if interaction.user.id != user.id:
+            await interaction.response.send_message("Only the command author can skip.", ephemeral=True)
+            return
+        session.welcoming_channel = None
+        await interaction.message.delete()
+        # Go to next step: Welcome Text
+        embed2 = discord.Embed(
+            title="Welcoming Configuration: Welcome Text",
+            description="Please enter the welcome text for new users.\n\nYou can use variables like `{user}` for the username.\n\nYou can cancel or skip this step with the buttons below.",
+            color=discord.Color.blurple()
+        )
+        view2 = discord.ui.View()
+        btn_skip_text = discord.ui.Button(label="Skip", style=discord.ButtonStyle.gray)
+        async def skip_text_callback(interaction2: discord.Interaction):
+            if interaction2.user.id != user.id:
+                await interaction2.response.send_message("Only the command author can skip.", ephemeral=True)
+                return
+            session.welcome_text = None
+            await interaction2.message.delete()
+            # Show config summary
+            embed_summary = discord.Embed(
+                title="✅ Configuration Complete",
+                description="The server configuration is complete! Here's a summary:",
+                color=discord.Color.green()
+            )
+            welcoming_channel_obj = bot.get_channel(int(session.welcoming_channel)) if session.welcoming_channel else None
+            config_summary = (
+                f"**API Key:** ||Hidden||\n"
+                f"**Announcement Role:** {session.announce_role.mention if session.announce_role else 'None'}\n"
+                f"**Updates Channel:** {session.updates_channel.mention if session.updates_channel else 'None'}\n"
+                f"**Logs Channel:** {session.logs_channel.mention if session.logs_channel else 'None'}\n"
+                f"**In-Game Moderator Permission:** {session.ingame_perms}\n"
+                f"**Server Code:** {session.server_code}\n"
+                f"**Session Ping:** {session.session_ping}\n"
+                f"**Session Permission Role:** {session.session_perms}\n"
+                f"**Session Channel:** {session.session_channel}\n"
+                f"**Welcoming Channel:** {welcoming_channel_obj.mention if welcoming_channel_obj else 'None'}\n"
+                f"**Welcome Text:** {session.welcome_text}"
+            )
+            embed_summary.add_field(name="Configuration Summary", value=config_summary, inline=False)
+            embed_summary.set_footer(text="Maple Server • Configuration")
+            view_summary = ConfirmConfigView(user.id, session_id)
+            await channel.send(embed=embed_summary, view=view_summary)
+        btn_skip_text.callback = skip_text_callback
+        view2.add_item(btn_skip_text)
+        btn_cancel_text = discord.ui.Button(label="Delete Configuration", style=discord.ButtonStyle.red, custom_id="cancel11")
+        btn_cancel_text.callback = cancel_callback
+        view2.add_item(btn_cancel_text)
+        msg2 = await channel.send(embed=embed2, view=view2)
+        try:
+            reply2 = await bot.wait_for('message', check=check, timeout=180)
+            session.welcome_text = reply2.content.strip()
+            await msg2.delete()
+            await reply2.delete()
+            # Show config summary
+            embed_summary = discord.Embed(
+                title="✅ Configuration Complete",
+                description="The server configuration is complete! Here's a summary:",
+                color=discord.Color.green()
+            )
+            welcoming_channel_obj = bot.get_channel(int(session.welcoming_channel)) if session.welcoming_channel else None
+            config_summary = (
+                f"**API Key:** ||Hidden||\n"
+                f"**Announcement Role:** {session.announce_role.mention if session.announce_role else 'None'}\n"
+                f"**Updates Channel:** {session.updates_channel.mention if session.updates_channel else 'None'}\n"
+                f"**Logs Channel:** {session.logs_channel.mention if session.logs_channel else 'None'}\n"
+                f"**In-Game Moderator Permission:** {session.ingame_perms}\n"
+                f"**Server Code:** {session.server_code}\n"
+                f"**Session Ping:** {session.session_ping}\n"
+                f"**Session Permission Role:** {session.session_perms}\n"
+                f"**Session Channel:** {session.session_channel}\n"
+                f"**Welcoming Channel:** {welcoming_channel_obj.mention if welcoming_channel_obj else 'None'}\n"
+                f"**Welcome Text:** {session.welcome_text}"
+            )
+            embed_summary.add_field(name="Configuration Summary", value=config_summary, inline=False)
+            embed_summary.set_footer(text="Maple Server • Configuration")
+            view_summary = ConfirmConfigView(user.id, session_id)
+            await channel.send(embed=embed_summary, view=view_summary)
+        except asyncio.TimeoutError:
+            await msg2.delete()
+            config_sessions.pop(session_id, None)
+            await channel.send("Configuration timed out.", delete_after=10)
+        return
     btn_skip.callback = skip_callback
     view.add_item(btn_skip)
     btn_cancel = discord.ui.Button(label="Delete Configuration", style=discord.ButtonStyle.red, custom_id="cancel10")
@@ -1161,8 +1243,83 @@ async def start_config_steps(interaction, session_id):
             session.welcoming_channel = None
             await msg.delete()
             await reply.delete()
-            await interaction.followup.send("Skipped welcoming channel configuration.", ephemeral=True)
-            await start_config_steps(interaction, session_id)
+            # Go to next step: Welcome Text (same as skip_callback above)
+            embed2 = discord.Embed(
+                title="Welcoming Configuration: Welcome Text",
+                description="Please enter the welcome text for new users.\n\nYou can use variables like `{user}` for the username.\n\nYou can cancel or skip this step with the buttons below.",
+                color=discord.Color.blurple()
+            )
+            view2 = discord.ui.View()
+            btn_skip_text = discord.ui.Button(label="Skip", style=discord.ButtonStyle.gray)
+            async def skip_text_callback(interaction2: discord.Interaction):
+                if interaction2.user.id != user.id:
+                    await interaction2.response.send_message("Only the command author can skip.", ephemeral=True)
+                    return
+                session.welcome_text = None
+                await interaction2.message.delete()
+                # Show config summary
+                embed_summary = discord.Embed(
+                    title="✅ Configuration Complete",
+                    description="The server configuration is complete! Here's a summary:",
+                    color=discord.Color.green()
+                )
+                welcoming_channel_obj = bot.get_channel(int(session.welcoming_channel)) if session.welcoming_channel else None
+                config_summary = (
+                    f"**API Key:** ||Hidden||\n"
+                    f"**Announcement Role:** {session.announce_role.mention if session.announce_role else 'None'}\n"
+                    f"**Updates Channel:** {session.updates_channel.mention if session.updates_channel else 'None'}\n"
+                    f"**Logs Channel:** {session.logs_channel.mention if session.logs_channel else 'None'}\n"
+                    f"**In-Game Moderator Permission:** {session.ingame_perms}\n"
+                    f"**Server Code:** {session.server_code}\n"
+                    f"**Session Ping:** {session.session_ping}\n"
+                    f"**Session Permission Role:** {session.session_perms}\n"
+                    f"**Session Channel:** {session.session_channel}\n"
+                    f"**Welcoming Channel:** {welcoming_channel_obj.mention if welcoming_channel_obj else 'None'}\n"
+                    f"**Welcome Text:** {session.welcome_text}"
+                )
+                embed_summary.add_field(name="Configuration Summary", value=config_summary, inline=False)
+                embed_summary.set_footer(text="Maple Server • Configuration")
+                view_summary = ConfirmConfigView(user.id, session_id)
+                await channel.send(embed=embed_summary, view=view_summary)
+            btn_skip_text.callback = skip_text_callback
+            view2.add_item(btn_skip_text)
+            btn_cancel_text = discord.ui.Button(label="Delete Configuration", style=discord.ButtonStyle.red, custom_id="cancel11")
+            btn_cancel_text.callback = cancel_callback
+            view2.add_item(btn_cancel_text)
+            msg2 = await channel.send(embed=embed2, view=view2)
+            try:
+                reply2 = await bot.wait_for('message', check=check, timeout=180)
+                session.welcome_text = reply2.content.strip()
+                await msg2.delete()
+                await reply2.delete()
+                # Show config summary
+                embed_summary = discord.Embed(
+                    title="✅ Configuration Complete",
+                    description="The server configuration is complete! Here's a summary:",
+                    color=discord.Color.green()
+                )
+                welcoming_channel_obj = bot.get_channel(int(session.welcoming_channel)) if session.welcoming_channel else None
+                config_summary = (
+                    f"**API Key:** ||Hidden||\n"
+                    f"**Announcement Role:** {session.announce_role.mention if session.announce_role else 'None'}\n"
+                    f"**Updates Channel:** {session.updates_channel.mention if session.updates_channel else 'None'}\n"
+                    f"**Logs Channel:** {session.logs_channel.mention if session.logs_channel else 'None'}\n"
+                    f"**In-Game Moderator Permission:** {session.ingame_perms}\n"
+                    f"**Server Code:** {session.server_code}\n"
+                    f"**Session Ping:** {session.session_ping}\n"
+                    f"**Session Permission Role:** {session.session_perms}\n"
+                    f"**Session Channel:** {session.session_channel}\n"
+                    f"**Welcoming Channel:** {welcoming_channel_obj.mention if welcoming_channel_obj else 'None'}\n"
+                    f"**Welcome Text:** {session.welcome_text}"
+                )
+                embed_summary.add_field(name="Configuration Summary", value=config_summary, inline=False)
+                embed_summary.set_footer(text="Maple Server • Configuration")
+                view_summary = ConfirmConfigView(user.id, session_id)
+                await channel.send(embed=embed_summary, view=view_summary)
+            except asyncio.TimeoutError:
+                await msg2.delete()
+                config_sessions.pop(session_id, None)
+                await channel.send("Configuration timed out.", delete_after=10)
             return
         if not reply.channel_mentions:
             await reply.delete()
@@ -1178,79 +1335,87 @@ async def start_config_steps(interaction, session_id):
         config_sessions.pop(session_id, None)
         await channel.send("Configuration timed out.", delete_after=10)
         return
-    embed = discord.Embed(title="Welcoming Configuration: Welcome Text", description="Please enter the welcome text for new users.\n\nYou can use variables like `{user}` for the username.\n\nYou can cancel at any time with the button below.", color=discord.Color.blurple())
+
+    # Welcome Text Step (if not skipped)
+    embed = discord.Embed(
+        title="Welcoming Configuration: Welcome Text",
+        description="Please enter the welcome text for new users.\n\nYou can use variables like `{user}` for the username.\n\nYou can cancel or skip this step with the buttons below.",
+        color=discord.Color.blurple()
+    )
     view = discord.ui.View()
-    btn11 = discord.ui.Button(label="Delete Configuration", style=discord.ButtonStyle.red, custom_id="cancel11")
-    btn11.callback = cancel_callback
-    view.add_item(btn11)
-    msg = await channel.send(embed=embed, view=view)
     btn_skip_text = discord.ui.Button(label="Skip", style=discord.ButtonStyle.gray)
     async def skip_text_callback(interaction: discord.Interaction):
         if interaction.user.id != user.id:
             await interaction.response.send_message("Only the command author can skip.", ephemeral=True)
             return
-    session.welcome_text = None
-    await interaction.message.delete()
-    await show_config_summary(interaction, session_id)
+        session.welcome_text = None
+        await interaction.message.delete()
+        # Show config summary
+        embed_summary = discord.Embed(
+            title="✅ Configuration Complete",
+            description="The server configuration is complete! Here's a summary:",
+            color=discord.Color.green()
+        )
+        welcoming_channel_obj = bot.get_channel(int(session.welcoming_channel)) if session.welcoming_channel else None
+        config_summary = (
+            f"**API Key:** ||Hidden||\n"
+            f"**Announcement Role:** {session.announce_role.mention if session.announce_role else 'None'}\n"
+            f"**Updates Channel:** {session.updates_channel.mention if session.updates_channel else 'None'}\n"
+            f"**Logs Channel:** {session.logs_channel.mention if session.logs_channel else 'None'}\n"
+            f"**In-Game Moderator Permission:** {session.ingame_perms}\n"
+            f"**Server Code:** {session.server_code}\n"
+            f"**Session Ping:** {session.session_ping}\n"
+            f"**Session Permission Role:** {session.session_perms}\n"
+            f"**Session Channel:** {session.session_channel}\n"
+            f"**Welcoming Channel:** {welcoming_channel_obj.mention if welcoming_channel_obj else 'None'}\n"
+            f"**Welcome Text:** {session.welcome_text}"
+        )
+        embed_summary.add_field(name="Configuration Summary", value=config_summary, inline=False)
+        embed_summary.set_footer(text="Maple Server • Configuration")
+        view_summary = ConfirmConfigView(user.id, session_id)
+        await channel.send(embed=embed_summary, view=view_summary)
     btn_skip_text.callback = skip_text_callback
     view.add_item(btn_skip_text)
+    btn_cancel_text = discord.ui.Button(label="Delete Configuration", style=discord.ButtonStyle.red, custom_id="cancel11")
+    btn_cancel_text.callback = cancel_callback
+    view.add_item(btn_cancel_text)
+    msg = await channel.send(embed=embed, view=view)
     try:
         reply = await bot.wait_for('message', check=check, timeout=180)
         session.welcome_text = reply.content.strip()
         await msg.delete()
         await reply.delete()
+        # Show config summary
+        embed_summary = discord.Embed(
+            title="✅ Configuration Complete",
+            description="The server configuration is complete! Here's a summary:",
+            color=discord.Color.green()
+        )
+        welcoming_channel_obj = bot.get_channel(int(session.welcoming_channel)) if session.welcoming_channel else None
+        config_summary = (
+            f"**API Key:** ||Hidden||\n"
+            f"**Announcement Role:** {session.announce_role.mention if session.announce_role else 'None'}\n"
+            f"**Updates Channel:** {session.updates_channel.mention if session.updates_channel else 'None'}\n"
+            f"**Logs Channel:** {session.logs_channel.mention if session.logs_channel else 'None'}\n"
+            f"**In-Game Moderator Permission:** {session.ingame_perms}\n"
+            f"**Server Code:** {session.server_code}\n"
+            f"**Session Ping:** {session.session_ping}\n"
+            f"**Session Permission Role:** {session.session_perms}\n"
+            f"**Session Channel:** {session.session_channel}\n"
+            f"**Welcoming Channel:** {welcoming_channel_obj.mention if welcoming_channel_obj else 'None'}\n"
+            f"**Welcome Text:** {session.welcome_text}"
+        )
+        embed_summary.add_field(name="Configuration Summary", value=config_summary, inline=False)
+        embed_summary.set_footer(text="Maple Server • Configuration")
+        view_summary = ConfirmConfigView(user.id, session_id)
+        await channel.send(embed=embed_summary, view=view_summary)
     except asyncio.TimeoutError:
         await msg.delete()
         config_sessions.pop(session_id, None)
         await channel.send("Configuration timed out.", delete_after=10)
         return
-    embed = discord.Embed(title="✅ Configuration Complete", description="The server configuration is complete! Here's a summary:", color=discord.Color.green())
-    welcoming_channel_obj = bot.get_channel(int(session.welcoming_channel)) if session.welcoming_channel else None
-    config_summary = (
-        f"**API Key:** ||Hidden||\n"
-        f"**Announcement Role:** {session.announce_role.mention if session.announce_role else 'None'}\n"
-        f"**Updates Channel:** {session.updates_channel.mention if session.updates_channel else 'None'}\n"
-        f"**Logs Channel:** {session.logs_channel.mention if session.logs_channel else 'None'}\n"
-        f"**In-Game Moderator Permission:** {session.ingame_perms}\n"
-        f"**Server Code:** {session.server_code}\n"
-        f"**Session Ping:** {session.session_ping}\n"
-        f"**Session Permission Role:** {session.session_perms}\n"
-        f"**Session Channel:** {session.session_channel}\n"
-        f"**Welcoming Channel:** {welcoming_channel_obj.mention if welcoming_channel_obj else 'None'}\n"
-        f"**Welcome Text:** {session.welcome_text}"
-    )
-    embed.add_field(name="Configuration Summary", value=config_summary, inline=False)
-    embed.set_footer(text="Maple Server • Configuration")
-    view = ConfirmConfigView(user.id, session_id)
-    await channel.send(embed=embed, view=view)
 
-async def save_config_to_db(interaction, session_id):
-    session = config_sessions.get(session_id)
-    if not session:
-        return
-    payload = {
-        "guild_id": interaction.guild.id,
-        "api_key": session.api_key,
-        "announce_roles": json.dumps([session.announce_role.id] if session.announce_role else []),
-        "updates_channel": session.updates_channel.id,
-        "logs_channel": session.logs_channel.id,
-        "ingame_perms": session.ingame_perms,
-        "server_code": session.server_code,
-        "session_ping": session.session_ping,
-        "session_perms": session.session_perms,
-        "session_channel": session.session_channel,
-        "welcoming_channel": session.welcoming_channel,
-        "welcome_text": session.welcome_text
-    }
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
-    resp = requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
-    if resp.status_code in (200, 201):
-        await interaction.response.send_message("✅ Configuration saved successfully!", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"❌ Failed to save configuration: {resp.text}", ephemeral=True)
-    config_sessions.pop(session_id, None)
-
-# /config
+# --- /config (guided setup) ---
 @bot.tree.command(name="config", description="Start the guided onboarding configuration")
 async def onboarding(interaction: discord.Interaction):
     config = load_config(interaction.guild.id)
@@ -1312,4 +1477,4 @@ async def on_ready():
         print(f"Error syncing commands: {e}")
 
 # Token
-bot.run('MTM4MDY0NjM0NDk3NjQ5ODc3OA.GxFFdu.SMvuxSUimEvShg5z2E0Zpx3BmS_RtrZ6slBS1o')
+bot.run('MTM4MzE0NTQxMDc3MTY4NTUzOQ.G-z3hx.mwKJ-boVQkOurphMHRR9YJu9cSnIlAuId3DxR0')
