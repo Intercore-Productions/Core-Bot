@@ -50,6 +50,29 @@ def load_config(guild_id):
         "welcome_text": row.get("welcome_text")
     }
 
+def save_config_to_db(interaction, session_id):
+    session = config_sessions.get(session_id)
+    if not session:
+        return
+    payload = {
+        "guild_id": session.guild_id,
+        "api_key": session.api_key,
+        "announce_roles": json.dumps([session.announce_role.id]) if session.announce_role else json.dumps([]),
+        "updates_channel": session.updates_channel.id if session.updates_channel else None,
+        "logs_channel": session.logs_channel.id if session.logs_channel else None,
+        "ingame_perms": session.ingame_perms,
+        "server_code": session.server_code,
+        "session_ping": session.session_ping,
+        "session_perms": session.session_perms,
+        "session_channel": session.session_channel,
+        "welcoming_channel": session.welcoming_channel,
+        "welcome_text": session.welcome_text
+    }
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
+    requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+    config_sessions.pop(session_id, None)
+    await interaction.response.send_message("✅ Configuration saved.", ephemeral=True)
+
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
 async def config_view(interaction: discord.Interaction):
