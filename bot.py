@@ -50,7 +50,7 @@ def load_config(guild_id):
         "welcome_text": row.get("welcome_text")
     }
 
-def save_config_to_db(interaction, session_id):
+async def save_config_to_db(interaction, session_id):
     session = config_sessions.get(session_id)
     if not session:
         return
