@@ -1148,7 +1148,6 @@ async def start_config_steps(interaction, session_id):
            return
     session.welcoming_channel = None
     await interaction.message.delete()
-    # Prosegui direttamente allo step successivo (Welcome Text)
     await next_welcome_text_step(interaction, session_id)
     btn_skip.callback = skip_callback
     view.add_item(btn_skip)
@@ -1179,7 +1178,6 @@ async def start_config_steps(interaction, session_id):
         config_sessions.pop(session_id, None)
         await channel.send("Configuration timed out.", delete_after=10)
         return
-    # Step 2: Welcome Text
     embed = discord.Embed(title="Welcoming Configuration: Welcome Text", description="Please enter the welcome text for new users.\n\nYou can use variables like `{user}` for the username.\n\nYou can cancel at any time with the button below.", color=discord.Color.blurple())
     view = discord.ui.View()
     btn11 = discord.ui.Button(label="Delete Configuration", style=discord.ButtonStyle.red, custom_id="cancel11")
@@ -1193,7 +1191,6 @@ async def start_config_steps(interaction, session_id):
             return
     session.welcome_text = None
     await interaction.message.delete()
-    # Prosegui alla schermata finale (riepilogo e conferma)
     await show_config_summary(interaction, session_id)
     btn_skip_text.callback = skip_text_callback
     view.add_item(btn_skip_text)
