@@ -1477,4 +1477,4 @@ async def on_ready():
         print(f"Error syncing commands: {e}")
 
 # Token
-bot.run('MTM4MzE0NTQxMDc3MTY4NTUzOQ.G-z3hx.mwKJ-boVQkOurphMHRR9YJu9cSnIlAuId3DxR0')
+bot.run('MTM4MDY0NjM0NDk3NjQ5ODc3OA.GaHGnM.4jmGjGBQ1c8qxv8yHf5Trka57_d_7hn3JY0yIE')
