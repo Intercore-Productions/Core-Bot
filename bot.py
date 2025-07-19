@@ -127,6 +127,17 @@ async def config_reset(interaction: discord.Interaction):
         return
 
     await interaction.response.send_message("✅ Configuration reset.", ephemeral=True)
+# /stats
+@bot.tree.command(name="stats", description="Show bot statistics")
+async def stats(interaction: discord.Interaction):
+    guild_count = len(bot.guilds)
+    member_count = sum(g.member_count for g in bot.guilds)
+    ping = round(bot.latency * 1000)
+    embed = discord.Embed(title="Bot Statistics", color=discord.Color.blurple())
+    embed.add_field(name="Servers", value=str(guild_count), inline=True)
+    embed.add_field(name="Total Members", value=str(member_count), inline=True)
+    embed.add_field(name="Ping", value=f"{ping} ms", inline=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # /announce
 @bot.tree.command(name="announce", description="Send an in-game announcement")
@@ -1499,5 +1510,5 @@ async def on_ready():
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
-# Token
-bot.run('MTM4MDY0NjM0NDk3NjQ5ODc3OA.GaHGnM.4jmGjGBQ1c8qxv8yHf5Trka57_d_7hn3JY0yIE')
+token = os.getenv("DISCORD_TOKEN")
+bot.run(token)
