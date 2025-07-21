@@ -658,6 +658,8 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
         await interaction.response.send_message("❌ You do not have permission.")
         return
 
+    await interaction.response.defer(thinking=True)
+
     user_id = username_to_userid(user)
     if not user_id:
         await interaction.response.send_message("❌ User not found.")
