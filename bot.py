@@ -633,11 +633,11 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
             await user.send(embed=embed)
         except Exception:
             pass
-                await interaction.followup.send(f"✅ Player {user} (ID: {user_id}) kicked from the game server.", ephemeral=True)
+        await interaction.followup.send(f"✅ Player {user} (ID: {user_id}) kicked from the game server.", ephemeral=True)
             else:
-                await interaction.followup.send(f"❌ Failed to kick player: {resp.text}", ephemeral=True)
+        await interaction.followup.send(f"❌ Failed to kick player: {resp.text}", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
 
 # /game-ban (Dev) 
 @bot.tree.command(name="game-ban", description="Ban or unban a player from the game server")
