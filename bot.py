@@ -698,7 +698,8 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
                 pass
             await interaction.followup.send("✅ Ban status updated.")
         else:
-            await interaction.followup.send("❌ Failed to update ban status.")
+            await interaction.followup.send(f"❌ API Error {resp.status_code}: {resp.text}", ephemeral=True)
+            
     except Exception as e:
         await interaction.followup.send(f"❌ Error while updating ban: {e}")
 
