@@ -606,11 +606,6 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
         await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
         return
 
-    allowed_ids = [853705827738976277, 1099013081683738676]
-    if interaction.user.id not in allowed_ids:
-        await interaction.response.send_message("❌ You are not authorized to use this command. | Dev Team only", ephemeral=True)
-        return
-
     await interaction.response.defer(thinking=True)
     headers = {"X-Api-Key": config["api_key"], "Content-Type": "application/json"}
     body = {"UserId": user_id}
@@ -646,11 +641,6 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
     config = load_config(interaction.guild.id)
     if not config:
         await interaction.response.send_message("❌ This server is not configured.", ephemeral=True)
-        return
-
-    allowed_ids = [853705827738967277, 1099013081683738676]
-    if interaction.user.id not in allowed_ids:
-        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
         return
 
     ingame_role_id = config.get("ingame_perms")
