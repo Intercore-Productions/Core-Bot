@@ -16,9 +16,7 @@ intents.guilds = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- SUPABASE CONFIG ---
-SUPABASE_URL = "https://fgpcgctimopexdkwgiov.supabase.co" 
-SUPABASE_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZncGNnY3RpbW9wZXhka3dnaW92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxMDk4NjAsImV4cCI6MjA2MzY4NTg2MH0.ohP_KrJnY5RShx6ONHdNM9bUddqaSKASN4w9bTEoAGY" 
+# --- SUPABASE CONFIG --- 
 SUPABASE_TABLE = "server_config"
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_API_KEY,
