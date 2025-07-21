@@ -587,7 +587,7 @@ def username_to_userid(username):
     except requests.exceptions.RequestException:
         return None
 
-# /game-kick (Dev) 
+# /game-kick (Dev)
 @bot.tree.command(name="game-kick", description="Kick a player from the game server")
 @app_commands.describe(user="Username of the player to kick", reason="Optional reason for the kick")
 async def game_kick(interaction: discord.Interaction, user: str, reason: str = None):
@@ -605,7 +605,7 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
     if not user_id:
         await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
         return
-    
+
     allowed_ids = [853705827738976277, 1099013081683738676]
     if interaction.user.id not in allowed_ids:
         await interaction.response.send_message("❌ You are not authorized to use this command. | Dev Team only", ephemeral=True)
@@ -619,7 +619,7 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
     try:
         resp = requests.post("https://maple-api.marizma.games/v1/server/moderation/kick", headers=headers, data=json.dumps(body))
         if resp.status_code == 200:
-            embed = discord.Embed(title="👢 Game Kick", color=discord.Color.orange())
+            embed = discord.Embed(title="📤 Game Kick", color=discord.Color.orange())
             embed.add_field(name="User ID", value=str(user_id), inline=False)
             embed.add_field(name="Username", value=user, inline=False)
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
@@ -633,12 +633,13 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
             try:
                 await interaction.user.send(embed=embed)
             except Exception:
-                 pass
+                pass
         else:
             await interaction.followup.send("❌ Failed to kick the user. Try again later.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send("❌ An error occurred during kick. Try again later.", ephemeral=True)
 
-            
-# /game-ban (Dev) 
+# Game-Ban (dev)
 @bot.tree.command(name="game-ban", description="Ban or unban a player from the game server")
 @app_commands.describe(user="Username of the player to ban/unban", banned="Ban (true) or unban (false)", reason="Optional reason for the ban/unban")
 async def game_ban(interaction: discord.Interaction, user: str, banned: bool, reason: str = None):
