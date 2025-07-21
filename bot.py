@@ -832,8 +832,6 @@ async def setbanner(interaction: discord.Interaction, banner: str):
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
             embed.add_field(name="Banner", value=banner, inline=False)
             embed.timestamp = discord.utils.utcnow()
-            case_number = log_mod_action(interaction.guild.id, interaction.user.id, "setbanner", interaction.user.id)
-            embed.add_field(name="Case Number", value=str(case_number), inline=False)
             log_channel = interaction.guild.get_channel(config["logs_channel"])
             if log_channel:
                 await log_channel.send(embed=embed)
