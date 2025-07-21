@@ -662,7 +662,6 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
     if not user_id:
         await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
         return
-
     try:
     resp = requests.post("https://maple-api.marizma.games/v1/server/ban",
                          headers=headers, json=body)
@@ -684,6 +683,7 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
             await interaction.user.send(embed=embed)
         except Exception:
             pass
+
         await interaction.followup.send("✅ Ban status updated.", ephemeral=True)
     else:
         await interaction.followup.send("❌ Failed to update ban status.", ephemeral=True)
