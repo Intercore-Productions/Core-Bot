@@ -663,35 +663,34 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
         await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
         return
 
-    await interaction.response.defer(thinking=True)
-    headers = {"X-Api-Key": config["api_key"], "Content-Type": "application/json"}
-    body = {"UserId": user_id, "Banned": banned}
-    if reason:
-        body["ModerationReason"] = reason
     try:
-        resp = requests.post("https://maple-api.marizma.games/v1/server/banplayer", headers=headers, data=json.dumps(body))
-        if resp.status_code == 200:
-            embed = discord.Embed(title="🚫 Game Ban" if banned else "🔓 Game Unban",
-                                  color=discord.Color.red() if banned else discord.Color.green())
-            embed.add_field(name="User ID", value=str(user_id), inline=False)
-            embed.add_field(name="Username", value=user, inline=False)
-            embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
-            embed.add_field(name="Action", value="Ban" if banned else "Unban", inline=False)
-            if reason:
-                embed.add_field(name="Reason", value=reason, inline=False)
-            embed.timestamp = discord.utils.utcnow()
+    resp = requests.post("https://maple-api.marizma.games/v1/server/ban",
+                         headers=headers, json=body)
+    if resp.status_code == 200:
+        embed = discord.Embed(title="🔨 Game Ban" if banned else "❎ Game Unban",
+                              color=discord.Color.red() if banned else discord.Color.green())
+        embed.add_field(name="User ID", value=str(user_id), inline=False)
+        embed.add_field(name="Username", value=user, inline=False)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
+        embed.add_field(name="Action", value="Ban" if banned else "Unban", inline=False)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+        embed.timestamp = discord.utils.utcnow()
 
-            log_channel = interaction.guild.get_channel(config["logs_channel"])
-            if log_channel:
-                await log_channel.send(embed=embed)
-            try:
-                await interaction.user.send(embed=embed)
-            except Exception:
-                pass
-        else:
-            await interaction.followup.send("❌ Failed to update ban status. Try again later.", ephemeral=True)
+        log_channel = interaction.guild.get_channel(config["logs_channel"])
+        if log_channel:
+            await log_channel.send(embed=embed)
+        try:
+            await interaction.user.send(embed=embed)
+        except Exception:
+            pass
+        await interaction.followup.send("✅ Ban status updated.", ephemeral=True)
+    else:
+        await interaction.followup.send("❌ Failed to update ban status.", ephemeral=True)
 
-                
+except Exception as e:
+    await interaction.followup.send(f"❌ Error while updating ban status: {e}", ephemeral=True)
+
 from discord import app_commands
 
 @bot.tree.command(name="session", description="Manage a session announcement")
