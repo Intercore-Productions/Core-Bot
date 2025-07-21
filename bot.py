@@ -663,7 +663,7 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
         await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
         return
     try:
-    resp = requests.post("https://maple-api.marizma.games/v1/server/ban",
+        resp = requests.post("https://maple-api.marizma.games/v1/server/ban",
                          headers=headers, json=body)
     if resp.status_code == 200:
         embed = discord.Embed(title="🔨 Game Ban" if banned else "❎ Game Unban",
