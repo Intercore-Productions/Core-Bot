@@ -627,17 +627,17 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
                 embed.add_field(name="Reason", value=reason, inline=False)
             embed.timestamp = discord.utils.utcnow()
             log_channel = interaction.guild.get_channel(config["logs_channel"])
-    if log_channel:
-        await log_channel.send(embed=embed)
-    try:
-        await user.send(embed=embed)
-    except Exception:
-        pass
-            await interaction.followup.send(f"✅ Player {user} (ID: {user_id}) kicked from the game server.", ephemeral=True)
-        else:
-            await interaction.followup.send(f"❌ Failed to kick player: {resp.text}", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+        if log_channel:
+            await log_channel.send(embed=embed)
+        try:
+            await user.send(embed=embed)
+        except Exception:
+            pass
+                await interaction.followup.send(f"✅ Player {user} (ID: {user_id}) kicked from the game server.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Failed to kick player: {resp.text}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
 
 # /game-ban (Dev) 
 @bot.tree.command(name="game-ban", description="Ban or unban a player from the game server")
@@ -682,17 +682,17 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
             case_number = log_mod_action(interaction.guild.id, user_id, "game-ban" if banned else "game-unban", interaction.user.id)
             embed.add_field(name="Case Number", value=str(case_number), inline=False)
             log_channel = interaction.guild.get_channel(config["logs_channel"])
-    if log_channel:
-        await log_channel.send(embed=embed)
-    try:
-        await user.send(embed=embed)
-    except Exception:
-        pass
-            await interaction.followup.send(f"✅ Player {user} (ID: {user_id}) {'banned' if banned else 'unbanned'} from the game server.", ephemeral=True)
-        else:
-            await interaction.followup.send(f"❌ Failed to ban/unban player: {resp.text}", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+        if log_channel:
+            await log_channel.send(embed=embed)
+        try:
+            await user.send(embed=embed)
+        except Exception:
+            pass
+                await interaction.followup.send(f"✅ Player {user} (ID: {user_id}) {'banned' if banned else 'unbanned'} from the game server.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Failed to ban/unban player: {resp.text}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
 
 from discord import app_commands
 
