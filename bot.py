@@ -242,6 +242,110 @@ class HelpMenu(View):
                 inline=False
             )
             embed.add_field(
+import discord
+from discord import app_commands, Interaction, Embed
+from discord.ext import commands
+from discord.ui import View, Select
+
+class HelpMenu(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @Select(
+        placeholder="Select a help category...",
+        options=[
+            discord.SelectOption(label="General Info", description="Overview of Core Bot & usage", emoji="📘", value="info"),
+            discord.SelectOption(label="Commands", description="All available bot commands", emoji="🛠️", value="commands"),
+            discord.SelectOption(label="ToS & Privacy", description="Terms of Service and Privacy Policy", emoji="📜", value="tos"),
+            discord.SelectOption(label="Link & Social", description="Official links & social profiles", emoji="🌐", value="links")
+        ]
+    )
+    async def select_callback(self, interaction: Interaction, select: Select):
+        value = select.values[0]
+
+        if value == "info":
+            embed = Embed(
+                title="📘 General Info",
+                color=discord.Color.blue(),
+                description=(
+                    "**Welcome to Core Bot!**\n"
+                    "Core Bot is a powerful tool designed for Maple communities and Discord servers.\n"
+                    "It provides essential moderation, session tracking, logging, and management commands.\n\n"
+                    "**To Get Started:**\n"
+                    "Use `/config` to initialize the bot for your server.\n"
+                    "To customize session messages and layout, use `/session-config`.\n\n"
+                    "**Proper Bot Usage**\n"
+                    "Core Bot must be used according to the rules defined by **Intercore Production**, outlined in our ToS & Privacy.\n"
+                    "Misuse may result in the bot being suspended from your community."
+                )
+            )
+        
+        elif value == "commands":
+            embed = Embed(title="🛠️ Commands Overview", color=discord.Color.blue())
+            embed.add_field(
+                name="⚖️ Moderation Commands",
+                value=(
+                    "`/warn`, `/unwarn`, `/mute`, `/unmute`, `/kick`, `/softban`,\n"
+                    "`/t-ban`, `/p-ban`, `/unban`, `/modlogs`\n"
+                    "_Use of these commands depends on your assigned permissions._"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="🌐 API Commands",
+                value=(
+                    "`/announce`, `/banner`, `/game-info`, `/active-players`,\n"
+                    "`/game-kick`, `/game-ban`\n"
+                    "_Requires correct API key setup via `/config`._"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="⚙️ Management & Utility",
+                value=(
+                    "`/session`, `/hello`, `/config`, `/session-config`, `/config reset`, `/config view`,\n"
+                    "`/stats`, `/clear-modlogs-user`, `/clear-modlogs-all`, `/promote`, `/demote`, `/help`,\n"
+                    "`/maple-log`, `/logs`\n"
+                    "_Assist with setup, automation, and maintenance._"
+                ),
+                inline=False
+            )
+        
+        elif value == "tos":
+            embed = Embed(
+                title="📜 Terms of Service & Privacy Policy",
+                color=discord.Color.blue(),
+                description=(
+                    "By using **Core Bot**, you agree to follow the usage policies defined by **Intercore Production**.\n\n"
+                    "These documents describe how the bot operates, how data is handled, and the rules users must follow.\n"
+                    "Failure to comply may result in service suspension."
+                )
+            )
+            embed.add_field(
+                name="📄 Terms of Service",
+                value="[View Terms of Service](https://docs.google.com/document/d/1if-GZPAtqRLCCdAl5pzaY05I03IvC6-I12Mxd0O_ixc/edit?usp=sharing)",
+                inline=False
+            )
+            embed.add_field(
+                name="🔐 Privacy Policy",
+                value="[View Privacy Policy](https://docs.google.com/document/d/1YFQhE2LaN0dkw8Kv1RCspwu1eMHo0DOiX2HFdqYQb1k/edit?usp=sharing)",
+                inline=False
+            )
+
+        elif value == "links":
+            embed = Embed(
+                title="🌐 Links & Social",
+                color=discord.Color.blue(),
+                description=(
+                    "Access all the official Core Bot resources, platforms, and support channels below."
+                )
+            )
+            embed.add_field(
+                name="💬 Support Server",
+                value="[Join Support Server](https://discord.gg/7WHMQEhGa3)",
+                inline=False
+            )
+            embed.add_field(
                 name="🤖 Invite Core Bot",
                 value="[Invite the Bot](https://discord.com/oauth2/authorize?client_id=1380646344976498778)",
                 inline=False
@@ -268,8 +372,8 @@ class HelpMenu(View):
 class HelpCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-@bot.tree.command(name="help", description="Information & Help for user")
+        
+@app_commands.command(name="help", description="Get help and information about Core Bot.")
 async def help(self, interaction: Interaction):
         embed = Embed(
             title="💡 Core Support Help",
