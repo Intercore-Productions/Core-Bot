@@ -16,7 +16,9 @@ intents.guilds = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- SUPABASE CONFIG --- 
+# --- SUPABASE CONFIG ---
+SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_TABLE = "server_config"
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_API_KEY,
