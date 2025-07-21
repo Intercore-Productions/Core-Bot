@@ -269,7 +269,7 @@ class HelpCog(commands.Cog):
         self.bot = bot
 
 @bot.tree.command(name="help", description="Information & Help for user")
-    async def help(self, interaction: Interaction):
+async def help(self, interaction: Interaction):
         embed = Embed(
             title="💡 Core Support Help",
             description=(
