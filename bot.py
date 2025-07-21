@@ -1,5 +1,6 @@
 import discord
-from discord import app_commands, Interaction, Embed
+from discord import Interaction
+from discord import app_commands
 from discord.ext import commands
 from discord.ui import View, Select, select
 import requests
