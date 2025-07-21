@@ -645,37 +645,46 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
 async def game_ban(interaction: discord.Interaction, user: str, banned: bool, reason: str = None):
     config = load_config(interaction.guild.id)
     if not config:
-        await interaction.response.send_message("❌ This server is not configured.")
+        await interaction.response.send_message("❌ This server is not configured.", ephemeral=True)
         return
 
-    allowed_ids = [853705827738976277, 1099013081683738676]
+    allowed_ids = [853705827738967277, 1099013081683738676]
     if interaction.user.id not in allowed_ids:
-        await interaction.response.send_message("❌ You are not authorized to use this command.")
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
         return
 
     ingame_role_id = config.get("ingame_perms")
     if not ingame_role_id or not any(str(role.id) == str(ingame_role_id) for role in interaction.user.roles):
-        await interaction.response.send_message("❌ You do not have permission.")
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
         return
 
     await interaction.response.defer(thinking=True)
 
+    # Convert username to user ID
     user_id = username_to_userid(user)
     if not user_id:
-        await interaction.response.send_message("❌ User not found.")
+        await interaction.followup.send("❌ User not found. Please check the username.", ephemeral=True)
         return
 
+    # Prepare request
     body = {
-        "username": user,
-        "banned": banned
+        "UserId": user_id,
+        "BanStatus": banned
     }
+    if reason:
+        body["ModerationReason"] = reason
+
     headers = {
         "X-Api-Key": config.get("api_key"),
         "Content-Type": "application/json"
     }
 
     try:
-        resp = requests.post("https://maple-api.marizma.games/v1/server/banplayer", headers=headers, json=body)
+        resp = requests.post(
+            "https://maple-api.marizma.games/v1/server/banplayer",
+            headers=headers,
+            data=json.dumps(body)
+        )
         if resp.status_code == 200:
             embed = discord.Embed(
                 title="🔨 Game Ban" if banned else "✅ Game Unban",
@@ -692,17 +701,18 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
             log_channel = interaction.guild.get_channel(config["logs_channel"])
             if log_channel:
                 await log_channel.send(embed=embed)
+
             try:
                 await interaction.user.send(embed=embed)
             except Exception:
                 pass
+
             await interaction.followup.send("✅ Ban status updated.")
         else:
             await interaction.followup.send(f"❌ API Error {resp.status_code}: {resp.text}", ephemeral=True)
-            
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error while updating ban: {e}")
 
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error while updating ban: {e}", ephemeral=True)
 
 from discord import app_commands
 
