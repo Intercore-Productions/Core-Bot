@@ -641,7 +641,6 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
 
 # Game-Ban (dev)
 @bot.tree.command(name="game-ban", description="Ban or unban a player from the game server")
-@bot.tree.command(name="game-ban", description="Ban or unban a player")
 @app_commands.describe(user="Username of the player to ban/unban", banned="Ban = True / Unban = False", reason="Reason for the action")
 async def game_ban(interaction: discord.Interaction, user: str, banned: bool, reason: str = None):
     config = load_config(interaction.guild.id)
