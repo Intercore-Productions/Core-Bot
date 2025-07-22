@@ -588,7 +588,7 @@ def username_to_userid(username):
     except requests.exceptions.RequestException:
         return None
 
-# /game-kick (Dev)
+# /game-kick
 @bot.tree.command(name="game-kick", description="Kick a player from the game server")
 @app_commands.describe(user="Username of the player to kick", reason="Optional reason for the kick")
 async def game_kick(interaction: discord.Interaction, user: str, reason: str = None):
@@ -635,7 +635,7 @@ async def game_kick(interaction: discord.Interaction, user: str, reason: str = N
     except Exception as e:
         await interaction.followup.send("❌ An error occurred during kick. Try again later.", ephemeral=True)
 
-# Game-Ban (dev)
+# Game-Ban 
 @bot.tree.command(name="game-ban", description="Ban or unban a player from the game server")
 @app_commands.describe(user="Username of the player to ban/unban", banned="Ban = True / Unban = False", reason="Reason for the action")
 async def game_ban(interaction: discord.Interaction, user: str, banned: bool, reason: str = None):
