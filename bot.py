@@ -173,7 +173,82 @@ async def maple_log(interaction: Interaction, channel: TextChannel):
     embed.set_footer(text="Maple Log Setup • Core Bot")
 
     await interaction.response.send_message(embed=embed)
+
+# /set-logs
+from discord import app_commands, ui, Interaction, Webhook
+import discord
+import requests, json
+
+@bot.tree.command(name="server-logs", description="Creates and saves a webhook for server logs.")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def server_logs(interaction: Interaction):
+    guild = interaction.guild
+    channel = interaction.channel
+
+    await interaction.response.defer()
+
+    url_check = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild.id}"
+    check_resp = requests.get(url_check, headers=SUPABASE_HEADERS)
+
+    if check_resp.status_code != 200 or not check_resp.json():
+        await interaction.followup.send(
+            "❌ This server is not configured yet. Please use `/config` first."
+        )
+        return
+
+    current_data = check_resp.json()[0]
+    existing_webhook = current_data.get("webhook_url")
+
+    if existing_webhook:
+        class ConfirmOverwrite(ui.View):
+            def __init__(self):
+                super().__init__(timeout=30)
+                self.value = None
+
+            @ui.button(label="Continue", style=discord.ButtonStyle.green)
+            async def confirm(self, interaction_button: Interaction, button: ui.Button):
+                self.value = True
+                self.stop()
+
+            @ui.button(label="Cancel", style=discord.ButtonStyle.red)
+            async def cancel(self, interaction_button: Interaction, button: ui.Button):
+                self.value = False
+                self.stop()
+
+        view = ConfirmOverwrite()
+        await interaction.followup.send(
+            "⚠️ A webhook is already configured for this server.\n"
+            "Do you want to **overwrite** the existing one?",
+            view=view
+        )
+        await view.wait()
+
+        if view.value is None or view.value is False:
+            await interaction.followup.send("❌ Operation cancelled.")
+            return
+
+    try:
+        webhook: Webhook = await channel.create_webhook(name="Maple Logger")
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to create a webhook in this channel.")
+        return
+
+    webhook_url = webhook.url
     
+    payload = {
+        "webhook_url": webhook_url
+    }
+    patch_resp = requests.patch(url_check, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+
+    if patch_resp.status_code == 204:
+        await interaction.followup.send(
+            f"✅ Log Webhook has been **created and saved** successfully!\n\n**Webhook URL:**\n{webhook_url}"
+        )
+    else:
+        await interaction.followup.send(
+            "❌ Failed to update the webhook URL in Supabase."
+        )
+        
 
 # /stats
 @bot.tree.command(name="stats", description="Show bot statistics")
