@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from discord.interactions import Interaction
+from discord import Interaction
 from discord.ext import commands
 from discord.ui import View, Select, select
 import requests
