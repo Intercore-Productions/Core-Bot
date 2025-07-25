@@ -269,23 +269,30 @@ from discord.ext import commands
 from discord.utils import escape_markdown
 import aiohttp
 
-async def send_log(guild_id: int, embed: discord.Embed):
-    data = load_config(guild_id)  
+AVATAR_URL = "https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
 
-    webhook_url = data.get("webhook_url")
+def load_config(guild_id):
+    # testing 
+    ...
+
+async def send_log(guild_id, embed: discord.Embed):
+    config = load_config(guild_id)
+    webhook_url = config.get("webhook_url")
+    
     if not webhook_url:
-        return 
+        return  # Nessun webhook configurato
 
-    async with aiohttp.ClientSession() as session:
-        webhook = discord.Webhook.from_url(
-            webhook_url,
-            adapter=discord.AsyncWebhookAdapter(session)
-        )
-        await webhook.send(
-            embed=embed,
-            username="Core",
-            avatar_url="https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
-        )
+    try:
+        async with aiohttp.ClientSession() as session:
+            webhook = discord.Webhook.from_url(webhook_url, session=session)
+
+            await webhook.send(
+                embed=embed,
+                username="Log Bot",
+                avatar_url=AVATAR_URL
+            )
+    except Exception as e:
+        print(f"[Webhook Error] Failed to send log: {e}")
 
 
 webhook_cache = {}
