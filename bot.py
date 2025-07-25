@@ -270,7 +270,7 @@ from discord.utils import escape_markdown
 import aiohttp
 
 async def send_log(guild_id: int, embed: discord.Embed):
-    data = await load_config(guild_id)  
+    data = load_config(guild_id)  
 
     webhook_url = data.get("webhook_url")
     if not webhook_url:
