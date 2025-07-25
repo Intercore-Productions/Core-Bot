@@ -125,8 +125,8 @@ async def set_logs(self, interaction: discord.Interaction, channel: discord.Text
             return await interaction.response.send_message("Non ho i permessi per creare webhook in quel canale.", ephemeral=True)
 
 
-    guild = interaction.guild
-    channel = interaction.channel
+        guild = interaction.guild
+        channel = interaction.channel
 
     try:
         # Crea il webhook nel canale corrente
