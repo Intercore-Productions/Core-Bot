@@ -120,8 +120,10 @@ async def config_view(interaction: discord.Interaction):
 # /set-logs
 @app_commands.command(name="set-logs", description="Set the log channel for this server")
 @app_commands.checks.has_permissions(manage_guild=True)
-async def set_logs(self, interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
+async def set_logs(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not channel.permissions_for(interaction.guild.me).manage_webhooks:
+            return await interaction.response.send_message("Non ho i permessi per creare webhook in quel canale.", ephemeral=True)
+
 
     guild = interaction.guild
     channel = interaction.channel
