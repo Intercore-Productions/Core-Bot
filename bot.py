@@ -174,34 +174,7 @@ async def maple_log(interaction: Interaction, channel: TextChannel):
 
     await interaction.response.send_message(embed=embed)
 
-from discord import app_commands, Interaction
-
-# /server-logs-off
-@bot.tree.command(name="server-logs-off", description="Disables log Webhook by removing it from Supabase.")
-@app_commands.checks.has_permissions(manage_guild=True)
-async def server_logs_off(interaction: Interaction):
-    guild = interaction.guild
-
-    await interaction.response.defer(thinking=True)
-
-    url_check = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild.id}"
-    check_resp = requests.get(url_check, headers=SUPABASE_HEADERS)
-
-    if check_resp.status_code != 200 or not check_resp.json():
-        await interaction.followup.send("❌ This server is not configured yet.")
-        return
-
-    payload = {
-        "webhook_url": None
-    }
-    patch_resp = requests.patch(url_check, headers=SUPABASE_HEADERS, data=json.dumps(payload))
-
-    if patch_resp.status_code == 204:
-        await interaction.followup.send("✅ Webhook logging has been **disabled** successfully.")
-    else:
-        await interaction.followup.send("❌ Failed to disable logging.")
-
-# /server-logs
+# /set-logs
 from discord import app_commands, ui, Interaction, Webhook
 import discord
 import requests, json
@@ -299,14 +272,15 @@ import aiohttp
 AVATAR_URL = "https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
 
 def load_config(guild_id):
+    # testing 
     ...
 
 async def send_log(guild_id, embed: discord.Embed):
     config = load_config(guild_id)
+    webhook_url = config.get("webhook_url")
     
-    webhook_url = config.get("webhook_url") if config else None
     if not webhook_url:
-        return
+        return  # Nessun webhook configurato
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -518,15 +492,7 @@ async def announce(interaction: discord.Interaction, message: str):
                 await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
             return
 
-        announce_roles = config["announce_roles"]
-        announce_roles_int = set()
-        for r in announce_roles:
-            try:
-                announce_roles_int.add(int(r))
-            except (ValueError, TypeError):
-                continue
-        user_role_ids_int = set(role.id for role in interaction.user.roles)
-        if not user_role_ids_int & announce_roles_int:
+        if not any(role.id in config["announce_roles"] for role in interaction.user.roles):
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
             return
@@ -1197,44 +1163,8 @@ async def session(
     else:
         await interaction.followup.send("❌ Invalid action.", ephemeral=True)
 
-
 @bot.tree.command(name="setbanner", description="Set a banner for the game server")
 @app_commands.describe(banner="The banner text to set")
-async def setbanner(interaction: discord.Interaction, banner: str):
-    config = load_config(interaction.guild.id)
-    if not config:
-        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
-        return
-    announce_roles = config["announce_roles"]
-    user_role_ids = [role.id for role in interaction.user.roles]
-    # Accept both int and str in announce_roles
-    announce_roles_int = set(int(r) for r in announce_roles)
-    if not set(user_role_ids) & announce_roles_int:
-        await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
-        return
-    await interaction.response.defer(thinking=True)
-    headers = {"X-Api-Key": config["api_key"], "Content-Type": "application/json"}
-    data = json.dumps({"banner": banner})
-    try:
-        response = requests.post("https://maple-api.marizma.games/v1/server/setbanner", headers=headers, data=data)
-        if response.status_code == 200:
-            await interaction.followup.send(f"✅ Banner set: `{banner}`")
-            log_channel = bot.get_channel(config["logs_channel"])
-            if log_channel:
-                embed = discord.Embed(title="🏳️ Banner Set", color=discord.Color.blue())
-                embed.add_field(name="By", value=interaction.user.mention, inline=False)
-                embed.add_field(name="Banner", value=banner, inline=False)
-                embed.timestamp = discord.utils.utcnow()
-                await log_channel.send(embed=embed)
-        else:
-            await interaction.followup.send(
-                f"❌ Failed to set banner.\n"
-                f"🔢 Status Code: {response.status_code}\n"
-                f"📨 Response: {response.text}\n"
-                f"📝 Payload: {data}"
-            )
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error while sending request:\n```{str(e)}```")
 async def setbanner(interaction: discord.Interaction, banner: str):
     config = load_config(interaction.guild.id)
     if not config:
@@ -1942,3 +1872,4 @@ async def on_ready():
 
 token = os.getenv("DISCORD_TOKEN")
 bot.run(token)
+# end of the code dude
