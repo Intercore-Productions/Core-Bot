@@ -519,12 +519,9 @@ async def announce(interaction: discord.Interaction, message: str):
             return
 
         announce_roles = config["announce_roles"]
-        announce_roles_str = set(str(r) for r in announce_roles)
-        user_role_ids_str = set(str(role.id) for role in interaction.user.roles)
-        if not user_role_ids_str & announce_roles_str:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
-            return
+        announce_roles_int = set(int(r) for r in announce_roles)
+        user_role_ids_int = set(role.id for role in interaction.user.roles)
+        if not user_role_ids_int & announce_roles_int:
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
             return
@@ -1204,18 +1201,17 @@ async def setbanner(interaction: discord.Interaction, banner: str):
         await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
         return
     announce_roles = config["announce_roles"]
-    announce_roles_str = set(str(r) for r in announce_roles)
-    user_role_ids_str = set(str(role.id) for role in interaction.user.roles)
-    if not user_role_ids_str & announce_roles_str:
-        await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
-        return
+    user_role_ids = [role.id for role in interaction.user.roles]
+    # Accept both int and str in announce_roles
+    announce_roles_int = set(int(r) for r in announce_roles)
+    if not set(user_role_ids) & announce_roles_int:
         await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
         return
     await interaction.response.defer(thinking=True)
     headers = {"X-Api-Key": config["api_key"], "Content-Type": "application/json"}
-    data = json.dumps({"Banner": banner})
+    data = json.dumps({"banner": banner})
     try:
-        response = requests.post("https://maple-api.marizma.games/v1/server/banner", headers=headers, data=data)
+        response = requests.post("https://maple-api.marizma.games/v1/server/setbanner", headers=headers, data=data)
         if response.status_code == 200:
             await interaction.followup.send(f"✅ Banner set: `{banner}`")
             log_channel = bot.get_channel(config["logs_channel"])
