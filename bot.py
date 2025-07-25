@@ -136,7 +136,7 @@ async def config_reset(interaction: discord.Interaction):
 # /maple-log
 @bot.tree.command(name="maple-log", description="Create a 'Core' webhook for your private in-game server logs.")
 @app_commands.describe(channel="The channel where the webhook will be created.")
-async def maple_log(interaction: Interaction, channel: TextChannel):
+async def maple_log(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_guild:
         await interaction.response.send_message(
             "❌ You need the **Manage Server** permission to use this command.",
