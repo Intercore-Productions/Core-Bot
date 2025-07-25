@@ -121,12 +121,11 @@ async def config_view(interaction: discord.Interaction):
 @app_commands.command(name="set-logs", description="Set the log channel for this server")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def set_logs(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        if not channel.permissions_for(interaction.guild.me).manage_webhooks:
-            return await interaction.response.send_message("Non ho i permessi per creare webhook in quel canale.", ephemeral=True)
+    if not channel.permissions_for(interaction.guild.me).manage_webhooks:
+        return await interaction.response.send_message("❌ Non ho i permessi per creare webhook in quel canale.")
 
-
-        guild = interaction.guild
-        channel = interaction.channel
+    guild = interaction.guild
+    channel = interaction.channel
 
     try:
         # Crea il webhook nel canale corrente
@@ -140,12 +139,12 @@ async def set_logs(self, interaction: discord.Interaction, channel: discord.Text
             "webhook_url": webhook_url
         }).execute()
 
-        await interaction.followup.send("✅ Log channel configured with webhook!", ephemeral=True)
+        await interaction.followup.send("✅ Log channel configurato con successo.")
 
     except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to create webhooks in this channel.", ephemeral=True)
+        await interaction.followup.send("❌ I don't have permission to create a webhook in that channel.")
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`", ephemeral=True)
+        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`")
 
 
 
