@@ -134,52 +134,43 @@ async def config_reset(interaction: discord.Interaction):
     await interaction.response.send_message("✅ Configuration reset.", ephemeral=True)
 
 # /maple-log
-from discord import app_commands, Interaction, TextChannel, Embed
-import discord
-
-@app_commands.command(
-    name="maple-log",
-    description="Create a 'Core' webhook for your private in-game server logs."
-)
-@app_commands.describe(channel="The channel where the webhook will be created.")
+@bot.tree.command(name="maple-log", description="Set up a webhook to receive your Maple server logs.")
+@app_commands.describe(channel="The channel where the Webhook will be created")
+@app_commands.checks.has_permissions(manage_guild=True)
 async def maple_log(interaction: Interaction, channel: TextChannel):
-    if not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message(
-            "❌ You need the **Manage Server** permission to use this command.",
-            ephemeral=True
-        )
-        return
-
-    webhook = await channel.create_webhook(name="Core")
+    webhook: Webhook = await channel.create_webhook(name="Core")
 
     embed = Embed(
         title="✅ Webhook Created",
-        description="Your Webhook has been successfully created. Follow the steps below to set it up on your Server.",
+        description=f"A new Webhook has been successfully created in {channel.mention}.\n\n"
+                    f"**🔗 Webhook URL:**\n`{webhook.url}`\n\n"
+                    f"Your Webhook has been successfully created. Please follow the steps below to set it up on your Server.",
         color=discord.Color.green()
     )
+
     embed.add_field(
-        name="🔗 Webhook URL",
-        value=f"`{webhook.url}`",
-        inline=False
-    )
-    embed.add_field(
-        name="🛠 Configuration Steps",
+        name="📋 Configuration Steps",
         value=(
-            "• Enter your **Custom In-Game Server**\n"
-            "• Open the **Settings** menu\n"
-            "• Scroll to the **Command Log Webhook** section\n"
-            "• Paste the Webhook URL above."
+            "- Enter your **Custom In-Game Maple Server**\n"
+            "- Open the **Settings** menu\n"
+            "- Scroll to the bottom and find the **Command Log Webhook** section\n"
+            "- Paste the Webhook URL shown above."
         ),
         inline=False
     )
+
     embed.add_field(
-        name="🎨 Want to customize the webhook?",
-        value="Go to **Channel Settings → Integrations → Core**, and edit the webhook's name or avatar.",
+        name="⚙️ Want to customize the Webhook name or avatar?",
+        value=(
+            "Go to the channel settings > **Integrations** > **Core Webhook**, and edit as you wish."
+        ),
         inline=False
     )
-    embed.set_footer(text="Maple Server • Log Integration")
 
-    await interaction.response.send_message(embed=embed)    
+    embed.set_footer(text="Maple Log Setup • Core Bot")
+
+    await interaction.response.send_message(embed=embed)
+    
 
 # /stats
 @bot.tree.command(name="stats", description="Show bot statistics")
