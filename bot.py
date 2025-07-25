@@ -134,6 +134,9 @@ async def config_reset(interaction: discord.Interaction):
     await interaction.response.send_message("✅ Configuration reset.", ephemeral=True)
 
 # /maple-log
+from discord import app_commands, Interaction, Embed, TextChannel, Webhook
+import discord
+
 @bot.tree.command(name="maple-log", description="Set up a webhook to receive your Maple server logs.")
 @app_commands.describe(channel="The channel where the Webhook will be created")
 @app_commands.checks.has_permissions(manage_guild=True)
