@@ -288,7 +288,7 @@ async def send_log(guild_id, embed: discord.Embed):
 
             await webhook.send(
                 embed=embed,
-                username="Log Bot",
+                username="Core | Server Log",
                 avatar_url=AVATAR_URL
             )
     except Exception as e:
