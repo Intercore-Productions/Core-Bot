@@ -518,7 +518,13 @@ async def announce(interaction: discord.Interaction, message: str):
                 await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
             return
 
-        if not any(str(role.id) in [str(r) for r in config["announce_roles"]] for role in interaction.user.roles):
+        announce_roles = config["announce_roles"]
+        announce_roles_str = set(str(r) for r in announce_roles)
+        user_role_ids_str = set(str(role.id) for role in interaction.user.roles)
+        if not user_role_ids_str & announce_roles_str:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
+            return
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
             return
@@ -1197,7 +1203,12 @@ async def setbanner(interaction: discord.Interaction, banner: str):
     if not config:
         await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
         return
-    if not any(str(role.id) in [str(r) for r in config["announce_roles"]] for role in interaction.user.roles):
+    announce_roles = config["announce_roles"]
+    announce_roles_str = set(str(r) for r in announce_roles)
+    user_role_ids_str = set(str(role.id) for role in interaction.user.roles)
+    if not user_role_ids_str & announce_roles_str:
+        await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
+        return
         await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
         return
     await interaction.response.defer(thinking=True)
