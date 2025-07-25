@@ -117,36 +117,6 @@ async def config_view(interaction: discord.Interaction):
         if not interaction.response.is_done():
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
-# /set-logs
-@app_commands.command(name="set-logs", description="Set the log channel for this server")
-@app_commands.checks.has_permissions(manage_guild=True)
-async def set_logs(self, interaction: discord.Interaction, channel: discord.TextChannel):
-    if not channel.permissions_for(interaction.guild.me).manage_webhooks:
-        return await interaction.response.send_message("❌ Non ho i permessi per creare webhook in quel canale.")
-
-    guild = interaction.guild
-    channel = interaction.channel
-
-    try:
-        # Crea il webhook nel canale corrente
-        webhook = await channel.create_webhook(name="Core Logging")
-        webhook_url = webhook.url
-        guild_id = str(guild.id)
-
-        # Esegui un UPSERT nella tabella Supabase
-        supabase.table("server_config").upsert({
-            "guild_id": guild_id,
-            "webhook_url": webhook_url
-        }).execute()
-
-        await interaction.followup.send("✅ Log channel configurato con successo.")
-
-    except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to create a webhook in that channel.")
-    except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`")
-
-
 
 # /config-reset
 @bot.tree.command(name="config-reset", description="Reset the server configuration")
@@ -175,7 +145,7 @@ async def stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
    
 # /announce
-@bot.tree.command(name="announce", description="Send an in-game announcement")
+@bottree.command(name="announce", description="Send an in-game announcement")
 @app_commands.describe(message="The message to send in-game")
 async def announce(interaction: discord.Interaction, message: str):
     try:
