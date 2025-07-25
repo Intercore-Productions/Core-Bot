@@ -248,6 +248,130 @@ async def server_logs(interaction: Interaction):
         await interaction.followup.send(
             "❌ Failed to update the webhook URL in Supabase."
         )
+
+from datetime import datetime
+
+webhook_cache = {}
+
+def load_config(guild_id):
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild_id}"
+    resp = requests.get(url, headers=SUPABASE_HEADERS)
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    if not data:
+        return None
+    return data[0]
+
+def get_webhook_url(guild_id):
+    if guild_id in webhook_cache:
+        return webhook_cache[guild_id]
+    config = load_config(guild_id)
+    if config and config.get("webhook_url"):
+        webhook_cache[guild_id] = config["webhook_url"]
+        return webhook_cache[guild_id]
+    return None
+
+def build_embed(title, description, color=0x2ECC71, author=None, avatar_url=None):
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color,
+        timestamp=datetime.utcnow()
+    )
+    if author and avatar_url:
+        embed.set_author(name=author, icon_url=avatar_url)
+    return embed
+
+async def send_webhook_log(guild, embed):
+    webhook_url = get_webhook_url(guild.id)
+    if not webhook_url:
+        return
+    json_data = {
+        "embeds": [embed.to_dict()]
+    }
+    try:
+        requests.post(webhook_url, json=json_data)
+    except:
+        pass
+
+# --- EVENT HANDLERS ---
+
+@bot.event
+async def on_member_join(member):
+    embed = build_embed(
+        title="Member Joined",
+        description=f"{member.mention} has joined the server.",
+        color=0x00FF00,
+        author=str(member),
+        avatar_url=member.display_avatar.url
+    )
+    await send_webhook_log(member.guild, embed)
+
+@bot.event
+async def on_member_remove(member):
+    embed = build_embed(
+        title="Member Left",
+        description=f"{member.mention} has left the server.",
+        color=0xFF0000,
+        author=str(member),
+        avatar_url=member.display_avatar.url
+    )
+    await send_webhook_log(member.guild, embed)
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot:
+        return
+    embed = build_embed(
+        title="Message Deleted",
+        description=f"**Author:** {message.author.mention}\n**Channel:** {message.channel.mention}\n**Content:**\n{message.content}",
+        color=0xE67E22,
+        author=str(message.author),
+        avatar_url=message.author.display_avatar.url
+    )
+    await send_webhook_log(message.guild, embed)
+
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot or before.content == after.content:
+        return
+    embed = build_embed(
+        title="Message Edited",
+        description=f"**Author:** {before.author.mention}\n**Channel:** {before.channel.mention}\n**Before:** {before.content}\n**After:** {after.content}",
+        color=0x3498DB,
+        author=str(before.author),
+        avatar_url=before.author.display_avatar.url
+    )
+    await send_webhook_log(before.guild, embed)
+
+@bot.event
+async def on_guild_channel_create(channel):
+    embed = build_embed(
+        title="Channel Created",
+        description=f"Channel {channel.mention} has been created.",
+        color=0x1ABC9C
+    )
+    await send_webhook_log(channel.guild, embed)
+
+@bot.event
+async def on_guild_channel_delete(channel):
+    embed = build_embed(
+        title="Channel Deleted",
+        description=f"Channel {channel.name} has been deleted.",
+        color=0xC0392B
+    )
+    await send_webhook_log(channel.guild, embed)
+
+@bot.event
+async def on_guild_channel_update(before, after):
+    if before.name != after.name:
+        embed = build_embed(
+            title="Channel Renamed",
+            description=f"**Before:** {before.name}\n**After:** {after.name}",
+            color=0x9B59B6
+        )
+        await send_webhook_log(after.guild, embed)
         
 
 # /stats
