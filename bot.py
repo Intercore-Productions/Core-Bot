@@ -1,6 +1,6 @@
 import discord
-from discord import Interaction
 from discord import app_commands
+from discord import Interaction
 from discord.ext import commands
 from discord.ui import View, Select, select
 import requests
@@ -8,7 +8,7 @@ import json
 import os
 import asyncio
 from dotenv import load_dotenv
-
+from discord import ui, TextChannel, Embed
 load_dotenv()
 
 intents = discord.Intents.default()
@@ -117,6 +117,7 @@ async def config_view(interaction: discord.Interaction):
         if not interaction.response.is_done():
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
+
 # /config-reset
 @bot.tree.command(name="config-reset", description="Reset the server configuration")
 async def config_reset(interaction: discord.Interaction):
@@ -131,6 +132,56 @@ async def config_reset(interaction: discord.Interaction):
         return
 
     await interaction.response.send_message("✅ Configuration reset.", ephemeral=True)
+
+# /maple-log
+@bot.tree.command(name="maple-log", description="Create a 'Core' webhook for your private in-game server logs.")
+@app_commands.describe(channel="The channel where the webhook will be created.")
+async def maple_log(interaction: discord.Interaction, channel: TextChannel):
+    if not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message(
+            "❌ You need the **Manage Server** permission to use this command.",
+            ephemeral=True
+        )
+        return
+
+    webhook = await channel.create_webhook(name="Core")
+
+    embed = Embed(
+        title="✅ Webhook Created Successfully",
+        color=discord.Color.green()
+    )
+
+    embed.add_field(
+        name="🔗 Webhook URL",
+        value=f"```{webhook.url}```",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🛠 Setup Instructions",
+        value=(
+            "**1.** Enter your **Custom In-Game Server**\n"
+            "**2.** Open the **Settings** menu\n"
+            "**3.** Scroll to the section **Command Log Webhook**\n"
+            "**4.** Paste the **Webhook URL** above into the required field"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎨 Want to customize the webhook?",
+        value=(
+            "Go to **Channel Settings → Integrations → Core**, and edit the name or avatar of the webhook."
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text="Maple Server • Webhook Setup")
+    embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/1006/1006555.png")  # Optional custom image
+
+    await interaction.response.send_message(embed=embed)
+    
+
 # /stats
 @bot.tree.command(name="stats", description="Show bot statistics")
 async def stats(interaction: discord.Interaction):
@@ -913,8 +964,8 @@ async def demote(interaction: discord.Interaction, user: discord.Member, past_ra
     except Exception:
         pass
     await interaction.followup.send(f"✅ Demoted {user.mention}.", ephemeral=True)
-    # --- /config (guided setup) ---
-from discord import ui
+# --- /config (guided setup) ---
+from discord import ui, TextChannel, Embed
 
 class ConfigSession:
     def __init__(self, user_id, guild_id):
@@ -1534,3 +1585,4 @@ async def on_ready():
 
 token = os.getenv("DISCORD_TOKEN")
 bot.run(token)
+# end of code
