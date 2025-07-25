@@ -264,6 +264,10 @@ async def server_logs(interaction: Interaction):
         )
 
 from datetime import datetime
+import discord
+from discord.ext import commands
+from discord.utils import escape_markdown
+import aiohttp
 
 webhook_cache = {}
 
