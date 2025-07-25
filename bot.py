@@ -174,7 +174,34 @@ async def maple_log(interaction: Interaction, channel: TextChannel):
 
     await interaction.response.send_message(embed=embed)
 
-# /set-logs
+from discord import app_commands, Interaction
+
+# /server-logs-off
+@bot.tree.command(name="server-logs-off", description="Disables log Webhook by removing it from Supabase.")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def server_logs_off(interaction: Interaction):
+    guild = interaction.guild
+
+    await interaction.response.defer(thinking=True)
+
+    url_check = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild.id}"
+    check_resp = requests.get(url_check, headers=SUPABASE_HEADERS)
+
+    if check_resp.status_code != 200 or not check_resp.json():
+        await interaction.followup.send("❌ This server is not configured yet.")
+        return
+
+    payload = {
+        "webhook_url": None
+    }
+    patch_resp = requests.patch(url_check, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+
+    if patch_resp.status_code == 204:
+        await interaction.followup.send("✅ Webhook logging has been **disabled** successfully.")
+    else:
+        await interaction.followup.send("❌ Failed to disable logging.")
+
+# /server-logs
 from discord import app_commands, ui, Interaction, Webhook
 import discord
 import requests, json
@@ -272,15 +299,14 @@ import aiohttp
 AVATAR_URL = "https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
 
 def load_config(guild_id):
-    # testing 
     ...
 
 async def send_log(guild_id, embed: discord.Embed):
     config = load_config(guild_id)
-    webhook_url = config.get("webhook_url")
     
+    webhook_url = config.get("webhook_url") if config else None
     if not webhook_url:
-        return  # Nessun webhook configurato
+        return
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -1872,4 +1898,3 @@ async def on_ready():
 
 token = os.getenv("DISCORD_TOKEN")
 bot.run(token)
-# end of the code dude
