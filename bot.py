@@ -270,17 +270,22 @@ from discord.utils import escape_markdown
 import aiohttp
 
 async def send_log(guild_id: int, embed: discord.Embed):
-    from utils.supabase import load_config  # o la tua funzione esistente per leggere Supabase
+    data = await load_config(guild_id)  
 
-    data = load_config(guild_id)
     webhook_url = data.get("webhook_url")
-
     if not webhook_url:
-        return  # webhook non configurato
+        return 
 
     async with aiohttp.ClientSession() as session:
-        webhook = discord.Webhook.from_url(webhook_url, adapter=discord.AsyncWebhookAdapter(session))
-        await webhook.send(embed=embed, username="Server Logs", avatar_url="https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024")
+        webhook = discord.Webhook.from_url(
+            webhook_url,
+            adapter=discord.AsyncWebhookAdapter(session)
+        )
+        await webhook.send(
+            embed=embed,
+            username="Core",
+            avatar_url="https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
+        )
 
 
 webhook_cache = {}
