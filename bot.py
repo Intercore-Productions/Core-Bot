@@ -145,7 +145,7 @@ async def stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
    
 # /announce
-@bottree.command(name="announce", description="Send an in-game announcement")
+@bot.tree.command(name="announce", description="Send an in-game announcement")
 @app_commands.describe(message="The message to send in-game")
 async def announce(interaction: discord.Interaction, message: str):
     try:
