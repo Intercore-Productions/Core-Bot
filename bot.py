@@ -118,50 +118,33 @@ async def config_view(interaction: discord.Interaction):
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
 # /set-logs
-@bot.tree.command(name="set-logs", description="Set the channel where server events will be logged.")
-@app_commands.describe(channel="Select the log channel")
+@app_commands.command(name="set-logs", description="Set the log channel for this server")
 @app_commands.checks.has_permissions(manage_guild=True)
-async def set_logs(interaction: discord.Interaction, channel: discord.TextChannel):
+async def set_logs(self, interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
-    guild_id = str(interaction.guild.id)
-
-    
-    check_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild_id}&select=id"
-    check_response = requests.get(check_url, headers=SUPABASE_HEADERS)
-
-    if check_response.status_code != 200 or not check_response.json():
-        await interaction.followup.send(
-            "❌ This server is not configured yet. Please run `/config` first.",
-            ephemeral=True
-        )
-        return
+    guild = interaction.guild
+    channel = interaction.channel
 
     try:
+        # Crea il webhook nel canale corrente
         webhook = await channel.create_webhook(name="Core Logging")
         webhook_url = webhook.url
+        guild_id = str(guild.id)
 
-        update_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild_id}"
-        update_payload = {
+        # Esegui un UPSERT nella tabella Supabase
+        supabase.table("server_config").upsert({
+            "guild_id": guild_id,
             "webhook_url": webhook_url
-        }
-        update_response = requests.patch(update_url, headers=SUPABASE_HEADERS, json=update_payload)
+        }).execute()
 
-        if update_response.status_code in [200, 204]:
-            await interaction.followup.send(
-                f"✅ Webhook `Core Logging` has been created and saved for {channel.mention}.",
-                ephemeral=True
-            )
-        else:
-            await interaction.followup.send(
-                f"❌ Failed to save the webhook to Supabase.\n```{update_response.text}```",
-                ephemeral=True
-            )
+        await interaction.followup.send("✅ Log channel configured with webhook!", ephemeral=True)
 
     except discord.Forbidden:
-        await interaction.followup.send("❌ I don't have permission to create a webhook in that channel.", ephemeral=True)
+        await interaction.followup.send("❌ I don't have permission to create webhooks in this channel.", ephemeral=True)
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred:\n```{str(e)}```", ephemeral=True)
+        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`", ephemeral=True)
+
 
 
 # /config-reset
