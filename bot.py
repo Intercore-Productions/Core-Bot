@@ -272,15 +272,14 @@ import aiohttp
 AVATAR_URL = "https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
 
 def load_config(guild_id):
-    # testing 
     ...
 
 async def send_log(guild_id, embed: discord.Embed):
     config = load_config(guild_id)
-    webhook_url = config.get("webhook_url")
     
+    webhook_url = config.get("webhook_url") if config else None
     if not webhook_url:
-        return  # Nessun webhook configurato
+        return
 
     try:
         async with aiohttp.ClientSession() as session:
