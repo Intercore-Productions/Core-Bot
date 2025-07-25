@@ -117,6 +117,53 @@ async def config_view(interaction: discord.Interaction):
         if not interaction.response.is_done():
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
+# /set-logs
+@bot.tree.command(name="set-logs", description="Set the channel where server events will be logged.")
+@app_commands.describe(channel="Select the log channel")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def set_logs(interaction: discord.Interaction, channel: discord.TextChannel):
+    await interaction.response.defer(ephemeral=True)
+
+    guild_id = str(interaction.guild.id)
+
+    
+    check_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild_id}&select=id"
+    check_response = requests.get(check_url, headers=SUPABASE_HEADERS)
+
+    if check_response.status_code != 200 or not check_response.json():
+        await interaction.followup.send(
+            "❌ This server is not configured yet. Please run `/config` first.",
+            ephemeral=True
+        )
+        return
+
+    try:
+        webhook = await channel.create_webhook(name="Core Logging")
+        webhook_url = webhook.url
+
+        update_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild_id}"
+        update_payload = {
+            "webhook_url": webhook_url
+        }
+        update_response = requests.patch(update_url, headers=SUPABASE_HEADERS, json=update_payload)
+
+        if update_response.status_code in [200, 204]:
+            await interaction.followup.send(
+                f"✅ Webhook `Core Logging` has been created and saved for {channel.mention}.",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                f"❌ Failed to save the webhook to Supabase.\n```{update_response.text}```",
+                ephemeral=True
+            )
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to create a webhook in that channel.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ An error occurred:\n```{str(e)}```", ephemeral=True)
+
+
 # /config-reset
 @bot.tree.command(name="config-reset", description="Reset the server configuration")
 async def config_reset(interaction: discord.Interaction):
