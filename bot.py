@@ -518,7 +518,7 @@ async def announce(interaction: discord.Interaction, message: str):
                 await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
             return
 
-        if not any(role.id in config["announce_roles"] for role in interaction.user.roles):
+        if not any(str(role.id) in [str(r) for r in config["announce_roles"]] for role in interaction.user.roles):
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
             return
@@ -1189,8 +1189,40 @@ async def session(
     else:
         await interaction.followup.send("❌ Invalid action.", ephemeral=True)
 
+
 @bot.tree.command(name="setbanner", description="Set a banner for the game server")
 @app_commands.describe(banner="The banner text to set")
+async def setbanner(interaction: discord.Interaction, banner: str):
+    config = load_config(interaction.guild.id)
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+    if not any(str(role.id) in [str(r) for r in config["announce_roles"]] for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
+        return
+    await interaction.response.defer(thinking=True)
+    headers = {"X-Api-Key": config["api_key"], "Content-Type": "application/json"}
+    data = json.dumps({"Banner": banner})
+    try:
+        response = requests.post("https://maple-api.marizma.games/v1/server/banner", headers=headers, data=data)
+        if response.status_code == 200:
+            await interaction.followup.send(f"✅ Banner set: `{banner}`")
+            log_channel = bot.get_channel(config["logs_channel"])
+            if log_channel:
+                embed = discord.Embed(title="🏳️ Banner Set", color=discord.Color.blue())
+                embed.add_field(name="By", value=interaction.user.mention, inline=False)
+                embed.add_field(name="Banner", value=banner, inline=False)
+                embed.timestamp = discord.utils.utcnow()
+                await log_channel.send(embed=embed)
+        else:
+            await interaction.followup.send(
+                f"❌ Failed to set banner.\n"
+                f"🔢 Status Code: {response.status_code}\n"
+                f"📨 Response: {response.text}\n"
+                f"📝 Payload: {data}"
+            )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error while sending request:\n```{str(e)}```")
 async def setbanner(interaction: discord.Interaction, banner: str):
     config = load_config(interaction.guild.id)
     if not config:
