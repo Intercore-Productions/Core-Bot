@@ -519,7 +519,12 @@ async def announce(interaction: discord.Interaction, message: str):
             return
 
         announce_roles = config["announce_roles"]
-        announce_roles_int = set(int(r) for r in announce_roles)
+        announce_roles_int = set()
+        for r in announce_roles:
+            try:
+                announce_roles_int.add(int(r))
+            except (ValueError, TypeError):
+                continue
         user_role_ids_int = set(role.id for role in interaction.user.roles)
         if not user_role_ids_int & announce_roles_int:
             if not interaction.response.is_done():
