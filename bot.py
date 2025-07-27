@@ -1,26 +1,3 @@
-# /premium
-@bot.tree.command(name="premium", description="Toggle premium status for a guild (developers only)")
-@app_commands.describe(guild_id="Guild ID to update", premium="Set premium status: True (Yes) or False (No)")
-async def premium(interaction: discord.Interaction, guild_id: int, premium: bool):
-    allowed_ids = {1099013081683738676, 1044899567822454846}
-    if interaction.user.id not in allowed_ids:
-        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
-        return
-    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
-    resp = requests.get(url, headers=SUPABASE_HEADERS)
-    if resp.status_code != 200 or not resp.json():
-        await interaction.response.send_message("❌ Guild not found in database.", ephemeral=True)
-        return
-    premium_value = "Yes" if premium else "No"
-    payload = {"premium_server": premium_value}
-    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}" 
-    patch_headers = SUPABASE_HEADERS.copy()
-    patch_headers["Prefer"] = "return=representation"
-    patch_resp = requests.patch(patch_url, headers=patch_headers, data=json.dumps(payload))
-    if patch_resp.status_code in (200, 204):
-        await interaction.response.send_message(f"✅ Premium status for guild {guild_id} set to {premium_value}.", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"❌ Failed to update premium status: {patch_resp.text}", ephemeral=True)
 import discord
 from discord import app_commands
 from discord import Interaction
@@ -99,6 +76,30 @@ async def save_config_to_db(interaction, session_id):
     requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
     config_sessions.pop(session_id, None)
     await interaction.response.send_message("✅ Configuration saved.", ephemeral=True)
+
+# /premium
+@bot.tree.command(name="premium", description="Toggle premium status for a guild (developers only)")
+@app_commands.describe(guild_id="Guild ID to update", premium="Set premium status: True (Yes) or False (No)")
+async def premium(interaction: discord.Interaction, guild_id: int, premium: bool):
+    allowed_ids = {1099013081683738676, 1044899567822454846}
+    if interaction.user.id not in allowed_ids:
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
+    resp = requests.get(url, headers=SUPABASE_HEADERS)
+    if resp.status_code != 200 or not resp.json():
+        await interaction.response.send_message("❌ Guild not found in database.", ephemeral=True)
+        return
+    premium_value = "Yes" if premium else "No"
+    payload = {"premium_server": premium_value}
+    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}" 
+    patch_headers = SUPABASE_HEADERS.copy()
+    patch_headers["Prefer"] = "return=representation"
+    patch_resp = requests.patch(patch_url, headers=patch_headers, data=json.dumps(payload))
+    if patch_resp.status_code in (200, 204):
+        await interaction.response.send_message(f"✅ Premium status for guild {guild_id} set to {premium_value}.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ Failed to update premium status: {patch_resp.text}", ephemeral=True)
 
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
