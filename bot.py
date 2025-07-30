@@ -541,6 +541,7 @@ async def active_players(interaction: discord.Interaction):
 async def hello(interaction: discord.Interaction):
     await interaction.response.send_message("👋 Hello!")
 
+
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="🔧 Bot in development"))
@@ -550,6 +551,17 @@ async def on_ready():
         print(f"✅ Synced {len(synced)} slash command(s).")
     except Exception as e:
         print(f"❌ Error syncing commands: {e}")
+
+@bot.event
+async def on_user_update(before, after):
+    embed = None
+    # ...existing code to build embed...
+    if hasattr(after, 'guilds') and after.guilds:
+        guild_id = after.guilds[0].id
+    else:
+        guild_id = None
+    if guild_id is not None:
+        await send_log(guild_id, embed)
 
 async def send_modlog_and_dm(user: discord.Member, embed: discord.Embed, log_channel_id: int, guild: discord.Guild):
     try:
