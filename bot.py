@@ -1,3 +1,128 @@
+
+import discord
+from discord import app_commands
+from discord import Interaction
+from discord.ext import commands
+from discord.ui import View, Select, select
+import requests
+import json
+import os
+import asyncio
+from dotenv import load_dotenv
+from discord import ui, TextChannel, Embed
+from functools import wraps
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_HEADERS = {
+    "apikey": os.getenv("SUPABASE_KEY"),
+    "Authorization": f"Bearer {os.getenv('SUPABASE_KEY')}",
+    "Content-Type": "application/json"
+}
+SUPABASE_TABLE = os.getenv("SUPABASE_TABLE", "server_config")
+
+def load_config(guild_id):
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild_id}"
+    resp = requests.get(url, headers=SUPABASE_HEADERS)
+    if resp.status_code == 200 and resp.json():
+        return resp.json()[0]
+    return None
+
+def has_premium_server():
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(interaction: discord.Interaction, *args, **kwargs):
+            guild_id = str(interaction.guild_id)
+            url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}&select=premium_server"
+            resp = requests.get(url, headers=SUPABASE_HEADERS)
+            if resp.status_code != 200:
+                await interaction.response.send_message(
+                    "⚠️ Unable to check premium status. Please try again later.",
+                    ephemeral=True
+                )
+                return
+            data = resp.json()
+            if not data or data[0].get("premium_server", "No") != "Yes":
+                await interaction.response.send_message(
+                    "❌ This is a **Premium Feature**.\nBuy Premium to gain access.",
+                    ephemeral=True
+                )
+                return
+            return await func(interaction, *args, **kwargs)
+        return wrapper
+    return decorator
+
+config_sessions = {}
+
+intents = discord.Intents.default()
+intents.members = True
+intents.guilds = True
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# /session-config
+@bot.tree.command(name="session-config", description="Configure session embed messages and colors (premium only)")
+@has_premium_server()
+@app_commands.describe(
+    ssu_message="Message for Session Start (SSU)",
+    ssu_color="Color (hex) for SSU",
+    ssd_message="Message for Session End (SSD)",
+    ssd_color="Color (hex) for SSD",
+    low_message="Message for Low Players",
+    low_color="Color (hex) for Low Players",
+    cancel_message="Message for Session Cancellation",
+    cancel_color="Color (hex) for Cancellation"
+)
+async def session_config(
+    interaction: discord.Interaction,
+    ssu_message: str,
+    ssu_color: str,
+    ssd_message: str,
+    ssd_color: str,
+    low_message: str,
+    low_color: str,
+    cancel_message: str,
+    cancel_color: str
+):
+    guild_id = str(interaction.guild_id)
+    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
+    resp = requests.get(url, headers=SUPABASE_HEADERS)
+    if resp.status_code != 200 or not resp.json():
+        await interaction.response.send_message("❌ Guild not found in database.", ephemeral=True)
+        return
+    payload = {
+        "session_ssu_message": ssu_message,
+        "session_ssu_color": ssu_color,
+        "session_ssd_message": ssd_message,
+        "session_ssd_color": ssd_color,
+        "session_low_message": low_message,
+        "session_low_color": low_color,
+        "session_cancel_message": cancel_message,
+        "session_cancel_color": cancel_color
+    }
+    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
+    patch_headers = SUPABASE_HEADERS.copy()
+    patch_headers["Prefer"] = "return=representation"
+    patch_resp = requests.patch(patch_url, headers=patch_headers, data=json.dumps(payload))
+    if patch_resp.status_code in (200, 204):
+        await interaction.response.send_message("✅ Session embed configuration updated.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ Failed to update session config: {patch_resp.text}", ephemeral=True)
+import discord
+from discord import app_commands
+from discord import Interaction
+from discord.ext import commands
+from discord.ui import View, Select, select
+import requests
+import json
+import os
+import asyncio
+from dotenv import load_dotenv
+from discord import ui, TextChannel, Embed
+load_dotenv()
+
+intents = discord.Intents.default()
+
 import discord
 from discord import app_commands
 from discord import Interaction
@@ -17,64 +142,55 @@ intents.guilds = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- SUPABASE CONFIG ---
-SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_TABLE = "server_config"
-SUPABASE_HEADERS = {
-    "apikey": SUPABASE_API_KEY,
-    "Authorization": f"Bearer {SUPABASE_API_KEY}",
-    "Content-Type": "application/json"
-}
-
-# --- Database Function ---
-def init_db():
-    pass 
-def load_config(guild_id):
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild_id}"
+# /session-config
+@bot.tree.command(name="session-config", description="Configure session embed messages and colors (premium only)")
+@has_premium_server()
+@app_commands.describe(
+    ssu_message="Message for Session Start (SSU)",
+    ssu_color="Color (hex) for SSU",
+    ssd_message="Message for Session End (SSD)",
+    ssd_color="Color (hex) for SSD",
+    low_message="Message for Low Players",
+    low_color="Color (hex) for Low Players",
+    cancel_message="Message for Session Cancellation",
+    cancel_color="Color (hex) for Cancellation"
+)
+async def session_config(
+    interaction: discord.Interaction,
+    ssu_message: str,
+    ssu_color: str,
+    ssd_message: str,
+    ssd_color: str,
+    low_message: str,
+    low_color: str,
+    cancel_message: str,
+    cancel_color: str
+):
+    guild_id = str(interaction.guild_id)
+    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
     resp = requests.get(url, headers=SUPABASE_HEADERS)
-    if resp.status_code != 200:
-        return None
-    data = resp.json()
-    if not data:
-        return None
-    row = data[0]
-    announce_roles = json.loads(row["announce_roles"]) if row.get("announce_roles") else []
-    return {
-        "api_key": row["api_key"],
-        "announce_roles": announce_roles,
-        "updates_channel": row["updates_channel"],
-        "logs_channel": row["logs_channel"],
-        "ingame_perms": row.get("ingame_perms"),
-        "server_code": row.get("server_code"),
-        "session_ping": row.get("session_ping"),
-        "session_perms": row.get("session_perms"),
-        "session_channel": row.get("session_channel"),
-        "welcoming_channel": row.get("welcoming_channel"),
-        "welcome_text": row.get("welcome_text")
-    }
-
-async def save_config_to_db(interaction, session_id):
-    session = config_sessions.get(session_id)
-    if not session:
+    if resp.status_code != 200 or not resp.json():
+        await interaction.response.send_message("❌ Guild not found in database.", ephemeral=True)
         return
     payload = {
-        "guild_id": session.guild_id,
-        "api_key": session.api_key,
-        "announce_roles": json.dumps([session.announce_role.id]) if session.announce_role else json.dumps([]),
-        "updates_channel": session.updates_channel.id if session.updates_channel else None,
-        "logs_channel": session.logs_channel.id if session.logs_channel else None,
-        "ingame_perms": session.ingame_perms,
-        "server_code": session.server_code,
-        "session_ping": session.session_ping,
-        "session_perms": session.session_perms,
-        "session_channel": session.session_channel,
-        "welcoming_channel": session.welcoming_channel,
-        "welcome_text": session.welcome_text
+        "session_ssu_message": ssu_message,
+        "session_ssu_color": ssu_color,
+        "session_ssd_message": ssd_message,
+        "session_ssd_color": ssd_color,
+        "session_low_message": low_message,
+        "session_low_color": low_color,
+        "session_cancel_message": cancel_message,
+        "session_cancel_color": cancel_color
     }
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
+    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
+    patch_headers = SUPABASE_HEADERS.copy()
+    patch_headers["Prefer"] = "return=representation"
+    patch_resp = requests.patch(patch_url, headers=patch_headers, data=json.dumps(payload))
+    if patch_resp.status_code in (200, 204):
+        await interaction.response.send_message("✅ Session embed configuration updated.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ Failed to update session config: {patch_resp.text}", ephemeral=True)
     requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
-    config_sessions.pop(session_id, None)
     await interaction.response.send_message("✅ Configuration saved.", ephemeral=True)
 
 from functools import wraps
@@ -240,99 +356,53 @@ async def maple_log(interaction: discord.Interaction, channel: TextChannel):
 # /stats
 @bot.tree.command(name="stats", description="Show bot statistics")
 async def stats(interaction: discord.Interaction):
-    guild_count = len(bot.guilds)
-    member_count = sum(g.member_count for g in bot.guilds)
-    ping = round(bot.latency * 1000)
-    embed = discord.Embed(title="Bot Statistics", color=discord.Color.blurple())
-    embed.add_field(name="Servers", value=str(guild_count), inline=True)
-    embed.add_field(name="Total Members", value=str(member_count), inline=True)
-    embed.add_field(name="Ping", value=f"{ping} ms", inline=True)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-   
-# /announce
-@bot.tree.command(name="announce", description="Send an in-game announcement")
-@app_commands.describe(message="The message to send in-game")
-async def announce(interaction: discord.Interaction, message: str):
-    try:
-        config = load_config(interaction.guild.id)
-        if not config:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
-            return
 
-        if not any(role.id in config["announce_roles"] for role in interaction.user.roles):
-            if not interaction.response.is_done():
-                await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
-            return
-
-        await interaction.response.defer(thinking=True)
-
-        headers = {
-            "X-Api-Key": config["api_key"],
-            "Content-Type": "application/json"
-        }
-        data = json.dumps({"Message": message})
-        try:
-            response = requests.post("https://maple-api.marizma.games/v1/server/announce", headers=headers, data=data)
-            if response.status_code == 200:
-                await interaction.followup.send(f"✅ Announcement sent: `{message}`")
-                # Log embed
-                log_channel = bot.get_channel(config["logs_channel"])
-                if log_channel:
-                    embed = discord.Embed(title="📢 Announcement Sent", color=discord.Color.blue())
-                    embed.add_field(name="By", value=interaction.user.mention, inline=False)
-                    embed.add_field(name="Message", value=message, inline=False)
-                    embed.timestamp = discord.utils.utcnow()
-                    await log_channel.send(embed=embed)
-            else:
-                await interaction.followup.send(
-                    f"❌ Failed to send announcement.\n"
-                    f"🔢 Status Code: {response.status_code}\n"
-                    f"📨 Response: {response.text}\n"
-                    f"📝 Payload: {data}"
-                )
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error while sending request:\n```{str(e)}```")
-    except Exception as e:
-        if not interaction.response.is_done():
-            try:
-                await interaction.response.send_message(f"❌ Internal error: {str(e)}", ephemeral=True)
-            except Exception:
-                pass
-
-# /game-info
-@bot.tree.command(name="game-info", description="Show public server information")
-async def game_info(interaction: discord.Interaction):
     config = load_config(interaction.guild.id)
     if not config:
         await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
         return
 
+    session_perms = config.get("session_perms")
+    if not session_perms or not any(str(role.id) == str(session_perms) for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
+        return
+
+    session_channel_id = config.get("session_channel")
+    session_channel = bot.get_channel(int(session_channel_id)) if session_channel_id else None
+    if not session_channel:
+        await interaction.response.send_message("❌ Session channel is not set in the configuration.", ephemeral=True)
+        return
+
+    session_ping = config.get("session_ping") or ""
+    server_code = config.get("server_code") or "Unknown"
+    api_key = config.get("api_key")
+
+    # Fetch custom session config from database
+    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{interaction.guild.id}"
+    resp = requests.get(url, headers=SUPABASE_HEADERS)
+    session_row = resp.json()[0] if resp.status_code == 200 and resp.json() else {}
+
+    # Defaults
+    default_ssu_message = "A new session is starting in our Maple Server! Join now with the Code Below!"
+    default_ssu_color = discord.Color.green().value
+    default_ssd_message = "The session hosted by {host} has ended. Thank you for participating! See you soon!"
+    default_ssd_color = discord.Color.orange().value
+    default_low_message = "There are currently not enough players in-game.\n**Players Online:** {player_count}\nPlease join the game if you want to participate!"
+    default_low_color = discord.Color.red().value
+    default_cancel_message = "The session has been cancelled."
+    default_cancel_color = discord.Color.dark_red().value
+
+    ssu_message = session_row.get("session_ssu_message") or default_ssu_message
+    ssu_color = int(session_row.get("session_ssu_color"), 16) if session_row.get("session_ssu_color") else default_ssu_color
+    ssd_message = session_row.get("session_ssd_message") or default_ssd_message
+    ssd_color = int(session_row.get("session_ssd_color"), 16) if session_row.get("session_ssd_color") else default_ssd_color
+    low_message = session_row.get("session_low_message") or default_low_message
+    low_color = int(session_row.get("session_low_color"), 16) if session_row.get("session_low_color") else default_low_color
+    cancel_message = session_row.get("session_cancel_message") or default_cancel_message
+    cancel_color = int(session_row.get("session_cancel_color"), 16) if session_row.get("session_cancel_color") else default_cancel_color
+
     await interaction.response.defer(thinking=True)
-    headers = {"X-Api-Key": config["api_key"]}
-    try:
-        response = requests.get("https://maple-api.marizma.games/v1/server", headers=headers)
-        if response.status_code == 200:
-            info = response.json()
-            data = info.get("Data", info.get("data", {}))
-            embed = discord.Embed(title="📝 Server Information", color=discord.Color.blue())
-            embed.add_field(name="Server Name", value=str(data.get("ServerName", "Unknown")), inline=True)
-            embed.add_field(name="Description", value=str(data.get("ServerDescription", "None")), inline=True)
-            embed.add_field(name="Code", value=str(data.get("Code", "Unknown")), inline=True)
-            embed.add_field(name="Owner", value=str(data.get("Owner", "Unknown")), inline=True)
-            embed.add_field(name="Player Count", value=str(data.get("PlayerCount", "0")), inline=True)
-            embed.add_field(name="Max Players", value=str(data.get("MaxPlayers", "Unknown")), inline=True)
-            admins = data.get("Admins", [])
-            embed.add_field(name="Admins", value=", ".join(map(str, admins)) if admins else "None", inline=True)
-            head_admins = data.get("HeadAdmins", [])
-            embed.add_field(name="Head Admins", value=", ".join(map(str, head_admins)) if head_admins else "None", inline=True)
-            embed.add_field(name="Documentation", value="https://api-docs.marizma.games/", inline=False)
-            embed.set_footer(text="Maple Server • Public Info")
-            await interaction.followup.send(embed=embed)
-        else:
-            await interaction.followup.send(f"❌ Failed to fetch server info. Status: {response.status_code}\n{response.text}")
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)}")
+
 
 # /active-players
 @bot.tree.command(name="active-players", description="Show active players on the server")
