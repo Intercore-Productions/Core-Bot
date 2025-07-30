@@ -193,6 +193,116 @@ async def session_config(
     requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
     await interaction.response.send_message("✅ Configuration saved.", ephemeral=True)
 
+async def send_log(guild_id, embed: discord.Embed):
+    config = load_config(guild_id)
+
+    if not config:
+        return 
+
+    webhook_url = config.get("webhook_url")
+    if not webhook_url:
+        return  # Webhook mancante
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            webhook = discord.Webhook.from_url(webhook_url, session=session)
+            await webhook.send(
+                embed=embed,
+                username="Core",
+                avatar_url="https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
+            )
+    except Exception as e:
+        print(f"[Webhook Error] Failed to send log: {e}")
+
+from discord import app_commands, ui, Interaction, Webhook
+import discord
+import requests, json
+import aiohttp
+from io import BytesIO
+
+@bot.tree.command(name="server-logs", description="Creates and saves a webhook for server logs.")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def server_logs(interaction: Interaction):
+    guild = interaction.guild
+    channel = interaction.channel
+
+    await interaction.response.defer()
+
+    url_check = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{guild.id}"
+    check_resp = requests.get(url_check, headers=SUPABASE_HEADERS)
+
+    if check_resp.status_code != 200 or not check_resp.json():
+        await interaction.followup.send(
+            "❌ This server is not configured yet. Please use `/config` first."
+        )
+        return
+
+    current_data = check_resp.json()[0]
+    existing_webhook = current_data.get("webhook_url")
+
+    if existing_webhook:
+        class ConfirmOverwrite(ui.View):
+            def __init__(self):
+                super().__init__(timeout=30)
+                self.value = None
+
+            @ui.button(label="Continue", style=discord.ButtonStyle.green)
+            async def confirm(self, interaction_button: Interaction, button: ui.Button):
+                self.value = True
+                self.stop()
+
+            @ui.button(label="Cancel", style=discord.ButtonStyle.red)
+            async def cancel(self, interaction_button: Interaction, button: ui.Button):
+                self.value = False
+                self.stop()
+
+        view = ConfirmOverwrite()
+        await interaction.followup.send(
+            "⚠️ A webhook is already configured for this server.\n"
+            "Do you want to **overwrite** the existing one?",
+            view=view
+        )
+        await view.wait()
+
+        if view.value is None or view.value is False:
+            await interaction.followup.send("❌ Operation cancelled.")
+            return
+
+    webhook_avatar_url = "https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
+
+    avatar_bytes = None
+    if webhook_avatar_url:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(webhook_avatar_url) as resp:
+                    if resp.status == 200:
+                        avatar_bytes = await resp.read()
+        except Exception as e:
+            await interaction.followup.send(f"⚠️ Failed to fetch avatar image. Creating webhook without avatar.\nError: `{e}`")
+
+    try:
+        webhook: Webhook = await channel.create_webhook(name="Core", avatar=avatar_bytes)
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to create a webhook in this channel.")
+        return
+
+    webhook_url = webhook.url
+
+    payload = {
+        "webhook_url": webhook_url
+    }
+    patch_resp = requests.patch(url_check, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+
+    if patch_resp.status_code == 204:
+        await interaction.followup.send(
+            f"✅ Log Webhook has been **created and saved** successfully!\n\n**Webhook URL:**\n{webhook_url}"
+        )
+    else:
+        await interaction.followup.send(
+            "❌ Failed to update the webhook URL in Supabase."
+        )
+
+
 from functools import wraps
 import requests
 
@@ -1678,6 +1788,134 @@ async def on_member_join(member):
     
     embed.set_thumbnail(url=member.display_avatar.url)
     await channel.send(embed=embed)
+
+@bot.event
+async def on_member_join(member):
+    embed = discord.Embed(title="📥 Member Joined", description=f"{member.mention} joined the server.", color=0x00ff00)
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else "")
+    await send_log(member.guild.id, embed)
+
+@bot.event
+async def on_member_remove(member):
+    embed = discord.Embed(title="📤 Member Left", description=f"{member.mention} left or was removed.", color=0xff0000)
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else "")
+    await send_log(member.guild.id, embed)
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot or not message.guild:
+        return
+    embed = discord.Embed(title="🗑️ Message Deleted", description=f"In {message.channel.mention}", color=0xFFA500)
+    embed.add_field(name="Author", value=message.author.mention, inline=True)
+    embed.add_field(name="Content", value=escape_markdown(message.content)[:1024] or "None", inline=False)
+    await send_log(message.guild.id, embed)
+
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot or not before.guild or before.content == after.content:
+        return
+    embed = discord.Embed(title="✏️ Message Edited", description=f"In {before.channel.mention}", color=0x00BFFF)
+    embed.add_field(name="Author", value=before.author.mention, inline=True)
+    embed.add_field(name="Before", value=escape_markdown(before.content)[:1024] or "None", inline=False)
+    embed.add_field(name="After", value=escape_markdown(after.content)[:1024] or "None", inline=False)
+    await send_log(before.guild.id, embed)
+
+@bot.event
+async def on_guild_channel_create(channel):
+    embed = discord.Embed(title="📁 Channel Created", description=f"{channel.mention} created.", color=0x32CD32)
+    await send_log(channel.guild.id, embed)
+
+@bot.event
+async def on_guild_channel_delete(channel):
+    embed = discord.Embed(title="❌ Channel Deleted", description=f"{channel.name} deleted.", color=0x8B0000)
+    await send_log(channel.guild.id, embed)
+
+@bot.event
+async def on_guild_channel_update(before, after):
+    if before.name != after.name:
+        embed = discord.Embed(title="🔄 Channel Renamed", description=f"{before.mention}", color=0x4682B4)
+        embed.add_field(name="Before", value=before.name, inline=True)
+        embed.add_field(name="After", value=after.name, inline=True)
+        await send_log(after.guild.id, embed)
+
+@bot.event
+async def on_member_update(before, after):
+    if before.roles != after.roles:
+        added_roles = [r.mention for r in after.roles if r not in before.roles]
+        removed_roles = [r.mention for r in before.roles if r not in after.roles]
+        embed = discord.Embed(title="🔧 Role Update", description=f"{after.mention}", color=0x9370DB)
+        if added_roles:
+            embed.add_field(name="Roles Added", value=", ".join(added_roles), inline=True)
+        if removed_roles:
+            embed.add_field(name="Roles Removed", value=", ".join(removed_roles), inline=True)
+        await send_log(after.guild.id, embed)
+
+@bot.event
+async def on_user_update(before, after):
+    if before.avatar != after.avatar or before.name != after.name:
+        embed = discord.Embed(title="👤 User Updated", description=f"{after.mention}", color=0x2E8B57)
+        embed.add_field(name="Before", value=before.name, inline=True)
+        embed.add_field(name="After", value=after.name, inline=True)
+        if after.avatar:
+            embed.set_thumbnail(url=after.avatar.url)
+        await send_log(after.guilds[0].id if after.guilds else None, embed)
+
+@bot.event
+async def on_guild_update(before, after):
+    if before.name != after.name:
+        embed = discord.Embed(title="🏷️ Server Renamed", color=0x1E90FF)
+        embed.add_field(name="Old Name", value=before.name, inline=True)
+        embed.add_field(name="New Name", value=after.name, inline=True)
+        await send_log(after.id, embed)
+
+@bot.event
+async def on_guild_emojis_update(guild, before, after):
+    embed = discord.Embed(title="😃 Emoji Updated", color=0xFF69B4)
+    embed.add_field(name="Before", value=", ".join([e.name for e in before]), inline=True)
+    embed.add_field(name="After", value=", ".join([e.name for e in after]), inline=True)
+    await send_log(guild.id, embed)
+
+@bot.event
+async def on_member_ban(guild, user):
+    embed = discord.Embed(title="🚫 Member Banned", description=f"{user.mention} was banned.", color=0xFF0000)
+    await send_log(guild.id, embed)
+
+@bot.event
+async def on_member_unban(guild, user):
+    embed = discord.Embed(title="✅ Member Unbanned", description=f"{user.mention} was unbanned.", color=0x00FF00)
+    await send_log(guild.id, embed)
+
+@bot.event
+async def on_guild_role_create(role):
+    embed = discord.Embed(
+        title="🆕 Role Created",
+        description=f"Role `{role.name}` was created.",
+        color=0x00FF00
+    )
+    await send_log(role.guild.id, embed)
+
+@bot.event
+async def on_guild_role_delete(role):
+    embed = discord.Embed(
+        title="🗑️ Role Deleted",
+        description=f"Role `{role.name}` was deleted.",
+        color=0xFF0000
+    )
+    await send_log(role.guild.id, embed)
+
+@bot.event
+async def on_guild_role_update(before, after):
+    embed = discord.Embed(
+        title="♻️ Role Updated",
+        description=f"Role `{before.name}` was updated.",
+        color=0x1E90FF
+    )
+    if before.name != after.name:
+        embed.add_field(name="Name Before", value=before.name, inline=True)
+        embed.add_field(name="Name After", value=after.name, inline=True)
+    if before.permissions != after.permissions:
+        embed.add_field(name="Permissions Changed", value="Yes", inline=False)
+    await send_log(after.guild.id, embed)
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
