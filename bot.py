@@ -194,14 +194,14 @@ async def session_config(
     await interaction.response.send_message("✅ Configuration saved.", ephemeral=True)
 
 async def send_log(guild_id, embed: discord.Embed):
-    config = load_config(guild_id)
+    config = await load_config(guild_id)
 
     if not config:
         return 
 
     webhook_url = config.get("webhook_url")
     if not webhook_url:
-        return  # Webhook mancante
+        return
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -209,10 +209,13 @@ async def send_log(guild_id, embed: discord.Embed):
             await webhook.send(
                 embed=embed,
                 username="Core",
-                avatar_url="https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024"
+                avatar_url="https://cdn.discordapp.com/avatars/1380646344976498778/45f9b70e6ef22b841179b0aafd4e4934.png?size=1024",
+                wait=True
             )
+            print("[Webhook] Inviato con successo.")
     except Exception as e:
         print(f"[Webhook Error] Failed to send log: {e}")
+
 
 from discord import app_commands, ui, Interaction, Webhook
 import discord
