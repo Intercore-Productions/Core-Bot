@@ -7,6 +7,7 @@ import requests
 import json
 import os
 import asyncio
+import aiohttp
 from dotenv import load_dotenv
 from discord import ui, TextChannel, Embed
 load_dotenv()
@@ -40,19 +41,31 @@ def load_config(guild_id):
         return None
     row = data[0]
     announce_roles = json.loads(row["announce_roles"]) if row.get("announce_roles") else []
-    return {
-        "api_key": row["api_key"],
+    # Return all config fields, including premium_server and session custom fields
+    config = {
+        "api_key": row.get("api_key"),
         "announce_roles": announce_roles,
-        "updates_channel": row["updates_channel"],
-        "logs_channel": row["logs_channel"],
+        "updates_channel": row.get("updates_channel"),
+        "logs_channel": row.get("logs_channel"),
         "ingame_perms": row.get("ingame_perms"),
         "server_code": row.get("server_code"),
         "session_ping": row.get("session_ping"),
         "session_perms": row.get("session_perms"),
         "session_channel": row.get("session_channel"),
         "welcoming_channel": row.get("welcoming_channel"),
-        "welcome_text": row.get("welcome_text")
+        "welcome_text": row.get("welcome_text"),
+        "webhook_url": row.get("webhook_url"),
+        "premium_server": row.get("premium_server"),
+        "session_ssu_message": row.get("session_ssu_message"),
+        "session_ssu_color": row.get("session_ssu_color"),
+        "session_ssd_message": row.get("session_ssd_message"),
+        "session_ssd_color": row.get("session_ssd_color"),
+        "session_low_message": row.get("session_low_message"),
+        "session_low_color": row.get("session_low_color"),
+        "session_cancel_message": row.get("session_cancel_message"),
+        "session_cancel_color": row.get("session_cancel_color"),
     }
+    return config
 
 async def save_config_to_db(interaction, session_id):
     session = config_sessions.get(session_id)
@@ -171,6 +184,201 @@ async def config_view(interaction: discord.Interaction):
         if not interaction.response.is_done():
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
+from discord import ui
+# /server-log
+@bot.tree.command(name="server-log", description="Create a Core webhook for server logs in this channel")
+@has_premium_server()
+async def server_log(interaction: discord.Interaction):
+    import requests
+    import json
+    import asyncio
+
+    channel = interaction.channel
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        config = load_config(interaction.guild.id)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Errore nel caricamento config: {e}", ephemeral=True)
+        return
+    if not config:
+        await interaction.followup.send("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+
+    existing_url = config.get("webhook_url")
+    if existing_url:
+        class OverwriteView(ui.View):
+            def __init__(self):
+                super().__init__(timeout=30)
+                self.value = None
+            @ui.button(label="Yes", style=discord.ButtonStyle.green)
+            async def yes(self, interaction2: discord.Interaction, button: ui.Button):
+                self.value = True
+                self.stop()
+                await interaction2.response.defer()
+            @ui.button(label="No", style=discord.ButtonStyle.red)
+            async def no(self, interaction2: discord.Interaction, button: ui.Button):
+                self.value = False
+                self.stop()
+                await interaction2.response.defer()
+
+        view = OverwriteView()
+        await interaction.followup.send(
+            f"A Core webhook already exists for this server. Do you want to overwrite it?", view=view, ephemeral=True
+        )
+        try:
+            await asyncio.wait_for(view.wait(), timeout=35)
+        except asyncio.TimeoutError:
+            await interaction.followup.send("⏰ Timeout. Operation cancelled.", ephemeral=True)
+            return
+        if view.value is None or not view.value:
+            await interaction.followup.send("Operation cancelled.", ephemeral=True)
+            return
+        try:
+            webhooks = await channel.webhooks()
+            for wh in webhooks:
+                if wh.url == existing_url:
+                    await wh.delete()
+        except Exception:
+            pass
+
+    avatar_url = "https://cdn.discordapp.com/attachments/1383202755727855707/1401613057058144389/C-removebg-preview.png?ex=6890e961&is=688f97e1&hm=fd122a9f4557b24f695e851d3ccc9fbcc0c833d5148acb4726c86705db3cbe59&"
+    try:
+        avatar_bytes = requests.get(avatar_url).content
+        webhook = await channel.create_webhook(name="Core", avatar=avatar_bytes)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to create webhook: {e}", ephemeral=True)
+        return
+
+    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{interaction.guild.id}"
+    headers = SUPABASE_HEADERS.copy()
+    headers["Content-Type"] = "application/json"
+    headers["Prefer"] = "return=representation"
+    payload = {"webhook_url": webhook.url}
+    try:
+        resp = requests.patch(patch_url, headers=headers, data=json.dumps(payload))
+        if resp.status_code not in (200, 204):
+            await interaction.followup.send(f"❌ Error saving webhook URL: {resp.text}", ephemeral=True)
+            return
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error saving webhook URL: {e}", ephemeral=True)
+        return
+
+    embed = discord.Embed(title="✅ Core Webhook Created", color=discord.Color.green())
+    embed.add_field(name="Webhook URL", value=f"`{webhook.url}`", inline=False)
+    embed.add_field(name="Instructions", value="Use this webhook for server logs.", inline=False)
+    embed.set_thumbnail(url=avatar_url)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+# /session-config
+@bot.tree.command(name="session-config", description="Configure session messages and colors")
+@has_premium_server()
+async def session_config(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
+        return
+
+    questions = [
+        ("session_ssu_message", "Enter the message for Session Start (SSU):"),
+        ("session_ssu_color", "Enter the HEX color for SSU (e.g. #00FF00):"),
+        ("session_ssd_message", "Enter the message for Session End (SSD):"),
+        ("session_ssd_color", "Enter the HEX color for SSD (e.g. #FFA500):"),
+        ("session_low_message", "Enter the message for Low Players:"),
+        ("session_low_color", "Enter the HEX color for Low Players (e.g. #FF0000):"),
+        ("session_cancel_message", "Enter the message for Session Cancellation:"),
+        ("session_cancel_color", "Enter the HEX color for Cancellation (e.g. #8B0000):"),
+    ]
+    answers = {}
+    await interaction.response.send_message("Session configuration started. Please answer the following questions.", ephemeral=True)
+    channel = interaction.channel
+    user = interaction.user
+
+    def check(m):
+        return m.author.id == user.id and m.channel.id == channel.id
+
+    def is_hex_color(s):
+        return s.startswith("#") and len(s) == 7 and all(c in "0123456789abcdefABCDEF" for c in s[1:])
+
+    for key, question in questions:
+        while True:
+            await channel.send(question)
+            try:
+                msg = await bot.wait_for('message', check=check, timeout=180)
+                value = msg.content.strip()
+                await msg.delete()
+                # Validate HEX color fields
+                if "color" in key:
+                    if not is_hex_color(value):
+                        await channel.send("❌ Invalid HEX color. Please use format #RRGGBB (e.g. #00FF00).", delete_after=10)
+                        continue
+                answers[key] = value
+                break
+            except asyncio.TimeoutError:
+                await channel.send("⏰ Timeout. Configuration cancelled.", delete_after=10)
+                return
+
+    # Save to Supabase (all fields as text)
+    # Only set the 8 session columns and guild_id
+    session_fields = [
+        "session_ssu_message",
+        "session_ssu_color",
+        "session_ssd_message",
+        "session_ssd_color",
+        "session_low_message",
+        "session_low_color",
+        "session_cancel_message",
+        "session_cancel_color"
+    ]
+    payload = {"guild_id": str(interaction.guild.id)}
+    for k in session_fields:
+        if k in answers:
+            payload[k] = str(answers[k])
+
+    url = f"{SUPABASE_URL}/rest/v1/server_config"
+    headers = SUPABASE_HEADERS.copy()
+    headers["Content-Type"] = "application/json"
+    headers["Prefer"] = "return=representation"
+    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{interaction.guild.id}"
+    try:
+        resp = requests.patch(patch_url, headers=headers, data=json.dumps(payload))
+        if resp.status_code in (200, 204):
+            await channel.send("✅ Session configuration updated successfully!", delete_after=10)
+        else:
+            await channel.send(f"❌ Error updating configuration: {resp.text}", delete_after=10)
+    except Exception as e:
+        await channel.send(f"❌ Error: {str(e)}", delete_after=10)
+
+# /session-reset
+@bot.tree.command(name="session-reset", description="Reset session message/color customizarion")
+@has_premium_server()
+async def session_reset(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
+        return
+
+    session_fields = [
+        "session_ssu_message",
+        "session_ssu_color",
+        "session_ssd_message",
+        "session_ssd_color",
+        "session_low_message",
+        "session_low_color",
+        "session_cancel_message",
+        "session_cancel_color"
+    ]
+    payload = {k: "" for k in session_fields}
+
+    headers = SUPABASE_HEADERS.copy()
+    headers["Content-Type"] = "application/json"
+    headers["Prefer"] = "return=representation"
+    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{interaction.guild.id}"
+    try:
+        resp = requests.patch(patch_url, headers=headers, data=json.dumps(payload))
+        if resp.status_code in (200, 204):
+            await interaction.response.send_message("✅ Session columns reset.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ Error resetting columns: {resp.text}", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
 # /config-reset
 @bot.tree.command(name="config-reset", description="Reset the server configuration")
@@ -851,6 +1059,111 @@ async def session(
 
     await interaction.response.defer(thinking=True)
 
+    # --- Premium/Default logic ---
+    # Check premium status (same as /premium logic)
+    # Fix: premium_server is stored as 'Yes' or 'No', not boolean
+    is_premium = str(config.get("premium_server", "No")).lower() == "yes"
+    # Get custom session config fields
+    custom_fields = {
+        "SSU": {
+            "message": config.get("session_ssu_message"),
+            "color": config.get("session_ssu_color"),
+        },
+        "SSD": {
+            "message": config.get("session_ssd_message"),
+            "color": config.get("session_ssd_color"),
+        },
+        "Low Players": {
+            "message": config.get("session_low_message"),
+            "color": config.get("session_low_color"),
+        },
+        "Session Cancellation": {
+            "message": config.get("session_cancel_message"),
+            "color": config.get("session_cancel_color"),
+        },
+    }
+
+    def get_embed(action_name, player_count=None):
+        # If premium and custom config set, use it, else fallback to default
+        if is_premium:
+            msg = custom_fields[action_name]["message"]
+            color_hex = custom_fields[action_name]["color"]
+            # Accept empty string as not set
+            if msg is not None and color_hex is not None and msg.strip() != "" and color_hex.strip() != "":
+                use_custom = True
+                # Robust HEX: add # if missing
+                color_hex = color_hex.strip()
+                if not color_hex.startswith("#"):
+                    color_hex = "#" + color_hex
+            else:
+                use_custom = False
+        else:
+            use_custom = False
+
+        if action_name == "SSU":
+            if use_custom:
+                embed = discord.Embed(
+                    title="SSU | Server Start Up",
+                    description=msg,
+                    color=int(color_hex.lstrip("#"), 16)
+                )
+            else:
+                embed = discord.Embed(
+                    title="SSU | Server Start Up",
+                    description="A new session is starting in our Maple Server! Join now with the Code Below!",
+                    color=discord.Color.green()
+                )
+            embed.add_field(name="Session Host", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Session Code", value=server_code, inline=True)
+            return embed
+        elif action_name == "SSD":
+            if use_custom:
+                embed = discord.Embed(
+                    title="SSD | Server Shut Down",
+                    description=msg,
+                    color=int(color_hex.lstrip("#"), 16)
+                )
+            else:
+                embed = discord.Embed(
+                    title="SSD | Server Shut Down",
+                    description=f"The session hosted by {interaction.user.mention} has ended. Thank you for participating! See you soon!",
+                    color=discord.Color.orange()
+                )
+            return embed
+        elif action_name == "Low Players":
+            # Always include Players Online: {player_count}
+            if use_custom:
+                desc = f"{msg}\n**Players Online:** {player_count}\nPlease join the game if you want to participate!"
+                embed = discord.Embed(
+                    title="Low Player Count",
+                    description=desc,
+                    color=int(color_hex.lstrip("#"), 16)
+                )
+            else:
+                embed = discord.Embed(
+                    title="Low Player Count",
+                    description=f"There are currently not enough players in-game.\n**Players Online:** {player_count}\nPlease join the game if you want to participate!",
+                    color=discord.Color.red()
+                )
+            return embed
+        elif action_name == "Session Cancellation":
+            if use_custom:
+                embed = discord.Embed(
+                    title="Session Cancelled",
+                    description=msg,
+                    color=int(color_hex.lstrip("#"), 16)
+                )
+            else:
+                embed = discord.Embed(
+                    title="Session Cancelled",
+                    description="The session has been cancelled by the host due to unforeseen reasons. Stay tuned for future sessions!",
+                    color=discord.Color.dark_red()
+                )
+            return embed
+        else:
+            return None
+
+    # --- Action logic ---
     if action.value == "SSU":
         banner_text = f"[SSU] A new Session hosted by {interaction.user.display_name} is started. Use !mod or !help for any problem."
         headers = {
@@ -866,13 +1179,7 @@ async def session(
             )
         except Exception:
             pass
-        embed = discord.Embed(
-            title=f"SSU | Server Start Up",
-            description="A new session is starting in our Maple Server! Join now with the Code Below!",
-            color=discord.Color.green()
-        )
-        embed.add_field(name="Session Host", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Session Code", value=server_code, inline=True)
+        embed = get_embed("SSU")
         await session_channel.send(f"{session_ping}", embed=embed)
         await interaction.followup.send("✅ Session start announced.", ephemeral=True)
 
@@ -891,11 +1198,7 @@ async def session(
             )
         except Exception:
             pass
-        embed = discord.Embed(
-            title="SSD | Server Shut Down",  # Fixed Grammar Error
-            description=f"The session hosted by {interaction.user.mention} has ended. Thank you for participating! See you soon!",
-            color=discord.Color.orange()
-        )
+        embed = get_embed("SSD")
         await session_channel.send(embed=embed)
         await interaction.followup.send("✅ Session end announced.", ephemeral=True)
 
@@ -910,21 +1213,12 @@ async def session(
                 player_count = len(players)
         except Exception:
             pass
-
-        embed = discord.Embed(
-            title="Low Player Count",
-            description=f"There are currently not enough players in-game.\n**Players Online:** {player_count}\nPlease join the game if you want to participate!",
-            color=discord.Color.red()
-        )
+        embed = get_embed("Low Players", player_count=player_count)
         await session_channel.send(f"{session_ping}", embed=embed)
         await interaction.followup.send("✅ Low player alert sent.", ephemeral=True)
 
     elif action.value == "Session Cancellation":
-        embed = discord.Embed(
-            title="Session Cancelled",
-            description="The session has been cancelled by the host due to unforeseen reasons. Stay tuned for future sessions!",
-            color=discord.Color.dark_red()
-        )
+        embed = get_embed("Session Cancellation")
         await session_channel.send(f"{session_ping}", embed=embed)
         await interaction.followup.send("✅ Session cancellation announced.", ephemeral=True)
 
@@ -1019,6 +1313,7 @@ async def demote(interaction: discord.Interaction, user: discord.Member, past_ra
     except Exception:
         pass
     await interaction.followup.send(f"✅ Demoted {user.mention}.", ephemeral=True)
+
 # --- /config (guided setup) ---
 from discord import ui, TextChannel, Embed
 
@@ -1609,6 +1904,233 @@ async def on_member_join(member):
     embed.set_thumbnail(url=member.display_avatar.url)
     await channel.send(embed=embed)
 
+import io
+from discord import File
+
+async def send_webhook_embed(guild_id, embed, file=None):
+    config = load_config(guild_id)
+    webhook_url = config.get("webhook_url") if config else None
+    if not webhook_url:
+        return
+    import requests
+    from discord import SyncWebhook
+    try:
+        webhook = SyncWebhook.from_url(webhook_url)
+        if file:
+            webhook.send(embed=embed, file=file)
+        else:
+            webhook.send(embed=embed)
+    except Exception as e:
+        print(f"Webhook send error: {e}")
+
+# --- MEMBER JOIN ---
+@bot.event
+async def on_member_join(member):
+    config = load_config(member.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="👤 Member Joined", color=discord.Color.green())
+    embed.add_field(name="User", value=f"{member.mention} ({member.id})", inline=False)
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else discord.Embed.Empty)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(member.guild.id, embed)
+
+# --- MEMBER LEAVE ---
+@bot.event
+async def on_member_remove(member):
+    config = load_config(member.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="🚪 Member Left", color=discord.Color.red())
+    embed.add_field(name="User", value=f"{member.mention} ({member.id})", inline=False)
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else discord.Embed.Empty)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(member.guild.id, embed)
+
+# --- ROLE CREATE ---
+@bot.event
+async def on_guild_role_create(role):
+    config = load_config(role.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="🆕 Role Created", color=discord.Color.blue())
+    embed.add_field(name="Role", value=f"{role.name} ({role.id})", inline=False)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(role.guild.id, embed)
+
+# --- ROLE DELETE ---
+@bot.event
+async def on_guild_role_delete(role):
+    config = load_config(role.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="❌ Role Deleted", color=discord.Color.red())
+    embed.add_field(name="Role", value=f"{role.name} ({role.id})", inline=False)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(role.guild.id, embed)
+
+# --- ROLE UPDATE ---
+@bot.event
+async def on_guild_role_update(before, after):
+    config = load_config(after.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="✏️ Role Updated", color=discord.Color.orange())
+    embed.add_field(name="Before Name", value=f"{before.name}", inline=True)
+    embed.add_field(name="After Name", value=f"{after.name}", inline=True)
+    # Check for permission changes
+    if before.permissions != after.permissions:
+        perms_before = [p for p, v in before.permissions if v]
+        perms_after = [p for p, v in after.permissions if v]
+        added = set(perms_after) - set(perms_before)
+        removed = set(perms_before) - set(perms_after)
+        if added:
+            embed.add_field(name="Permissions Added", value=", ".join(added), inline=False)
+        if removed:
+            embed.add_field(name="Permissions Removed", value=", ".join(removed), inline=False)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(after.guild.id, embed)
+
+# --- CHANNEL CREATE ---
+@bot.event
+async def on_guild_channel_create(channel):
+    config = load_config(channel.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="📺 Channel Created", color=discord.Color.blue())
+    embed.add_field(name="Channel", value=f"{channel.name} ({channel.id})", inline=False)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(channel.guild.id, embed)
+
+# --- CHANNEL DELETE ---
+@bot.event
+async def on_guild_channel_delete(channel):
+    config = load_config(channel.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="❌ Channel Deleted", color=discord.Color.red())
+    embed.add_field(name="Channel", value=f"{channel.name} ({channel.id})", inline=False)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(channel.guild.id, embed)
+
+# --- CHANNEL UPDATE ---
+@bot.event
+async def on_guild_channel_update(before, after):
+    config = load_config(after.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    embed = discord.Embed(title="✏️ Channel Updated", color=discord.Color.orange())
+    embed.add_field(name="Before Name", value=f"{before.name}", inline=True)
+    embed.add_field(name="After Name", value=f"{after.name}", inline=True)
+    # Check for permission overwrites changes
+    if before.overwrites != after.overwrites:
+        perms_before = {str(target): perms._values for target, perms in before.overwrites.items()}
+        perms_after = {str(target): perms._values for target, perms in after.overwrites.items()}
+        added = set(perms_after.keys()) - set(perms_before.keys())
+        removed = set(perms_before.keys()) - set(perms_after.keys())
+        changed = [t for t in perms_before if t in perms_after and perms_before[t] != perms_after[t]]
+        if added:
+            embed.add_field(name="Permissions Added For", value=", ".join(added), inline=False)
+        if removed:
+            embed.add_field(name="Permissions Removed For", value=", ".join(removed), inline=False)
+        for t in changed:
+            embed.add_field(name=f"Permissions Changed For {t}", value=f"Before: {perms_before[t]}\nAfter: {perms_after[t]}", inline=False)
+    embed.timestamp = discord.utils.utcnow()
+    await send_webhook_embed(after.guild.id, embed)
+
+# --- EMOJI CREATE/DELETE ---
+@bot.event
+async def on_guild_emojis_update(guild, before, after):
+    config = load_config(guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    before_set = set(e.id for e in before)
+    after_set = set(e.id for e in after)
+    added = [e for e in after if e.id not in before_set]
+    removed = [e for e in before if e.id not in after_set]
+    if added:
+        for emoji in added:
+            embed = discord.Embed(title="😀 Emoji Added", color=discord.Color.green())
+            embed.add_field(name="Emoji", value=f"{str(emoji)} ({emoji.id})", inline=False)
+            embed.timestamp = discord.utils.utcnow()
+            await send_webhook_embed(guild.id, embed)
+    if removed:
+        for emoji in removed:
+            embed = discord.Embed(title="❌ Emoji Removed", color=discord.Color.red())
+            embed.add_field(name="Emoji", value=f"{str(emoji)} ({emoji.id})", inline=False)
+            embed.timestamp = discord.utils.utcnow()
+            await send_webhook_embed(guild.id, embed)
+
+# --- VOICE STATE UPDATE ---
+@bot.event
+async def on_voice_state_update(member, before, after):
+    config = load_config(member.guild.id)
+    if not config:
+        return
+    if not config.get("webhook_url"):
+        return
+    if before.channel != after.channel:
+        if after.channel:
+            embed = discord.Embed(title="🔊 VC Joined", color=discord.Color.green())
+            embed.add_field(name="User", value=f"{member.mention} ({member.id})", inline=False)
+            embed.add_field(name="Channel", value=f"{after.channel.name}", inline=False)
+            embed.timestamp = discord.utils.utcnow()
+            await send_webhook_embed(member.guild.id, embed)
+        if before.channel:
+            embed = discord.Embed(title="🔈 VC Left", color=discord.Color.red())
+            embed.add_field(name="User", value=f"{member.mention} ({member.id})", inline=False)
+            embed.add_field(name="Channel", value=f"{before.channel.name}", inline=False)
+            embed.timestamp = discord.utils.utcnow()
+            await send_webhook_embed(member.guild.id, embed)
+
+# --- MESSAGE UPDATE ---
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot:
+        return
+    config = load_config(before.guild.id) if before.guild else None
+    webhook_url = config.get("webhook_url") if config else None
+    if webhook_url:
+        embed = discord.Embed(title="✏️ Message Edited", color=discord.Color.orange())
+        embed.add_field(name="Author", value=f"{before.author.mention} ({before.author.id})", inline=False)
+        embed.add_field(name="Channel", value=before.channel.mention, inline=False)
+        embed.add_field(name="Before", value=before.content or "(empty)", inline=False)
+        embed.add_field(name="After", value=after.content or "(empty)", inline=False)
+        embed.timestamp = discord.utils.utcnow()
+        await send_webhook_embed(before.guild.id, embed)
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot:
+        return
+    config = load_config(message.guild.id) if message.guild else None
+    webhook_url = config.get("webhook_url") if config else None
+    if webhook_url:
+        embed = discord.Embed(title="🗑️ Message Deleted", color=discord.Color.red())
+        embed.add_field(name="Author", value=f"{message.author.mention} ({message.author.id})", inline=False)
+        embed.add_field(name="Channel", value=message.channel.mention, inline=False)
+        embed.add_field(name="Content", value=message.content or "(empty)", inline=False)
+        embed.timestamp = discord.utils.utcnow()
+        await send_webhook_embed(message.guild.id, embed)
+        
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     try:
@@ -1640,4 +2162,5 @@ async def on_ready():
 
 token = os.getenv("DISCORD_TOKEN")
 bot.run(token)
-# end of code
+
+# END              
