@@ -64,6 +64,8 @@ def load_config(guild_id):
         "session_low_color": row.get("session_low_color"),
         "session_cancel_message": row.get("session_cancel_message"),
         "session_cancel_color": row.get("session_cancel_color"),
+        "session_ssu_banner": row.get("session_ssu_banner"),
+        "session_ssd_banner": row.get("session_ssd_banner"),
     }
     return config
 
@@ -280,8 +282,10 @@ async def session_config(interaction: discord.Interaction):
     questions = [
         ("session_ssu_message", "Enter the message for Session Start (SSU):"),
         ("session_ssu_color", "Enter the HEX color for SSU (e.g. #00FF00):"),
+        ("session_ssu_banner", "Enter the banner text for Session Start (SSU):"),
         ("session_ssd_message", "Enter the message for Session End (SSD):"),
         ("session_ssd_color", "Enter the HEX color for SSD (e.g. #FFA500):"),
+        ("session_ssd_banner", "Enter the banner text for Session End (SSD):"),
         ("session_low_message", "Enter the message for Low Players:"),
         ("session_low_color", "Enter the HEX color for Low Players (e.g. #FF0000):"),
         ("session_cancel_message", "Enter the message for Session Cancellation:"),
@@ -321,8 +325,10 @@ async def session_config(interaction: discord.Interaction):
     session_fields = [
         "session_ssu_message",
         "session_ssu_color",
+        "session_ssu_banner",
         "session_ssd_message",
         "session_ssd_color",
+        "session_ssd_banner",
         "session_low_message",
         "session_low_color",
         "session_cancel_message",
@@ -1165,7 +1171,11 @@ async def session(
 
     # --- Action logic ---
     if action.value == "SSU":
-        banner_text = f"[SSU] A new Session hosted by {interaction.user.display_name} is started. Use !mod or !help for any problem."
+        # Use custom banner if premium and configured
+        if is_premium and config.get("session_ssu_banner") and config.get("session_ssu_banner").strip():
+            banner_text = config.get("session_ssu_banner")
+        else:
+            banner_text = f"[SSU] A new Session hosted by {interaction.user.display_name} is started. Use !mod or !help for any problem."
         headers = {
             "X-Api-Key": api_key,
             "Content-Type": "application/json"
@@ -1184,7 +1194,11 @@ async def session(
         await interaction.followup.send("✅ Session start announced.", ephemeral=True)
 
     elif action.value == "SSD":
-        banner_text = f"[SSD] The session hosted by {interaction.user.display_name} is now concluded, we invite you to leave our server. See you soon!"
+        # Use custom banner if premium and configured
+        if is_premium and config.get("session_ssd_banner") and config.get("session_ssd_banner").strip():
+            banner_text = config.get("session_ssd_banner")
+        else:
+            banner_text = f"[SSD] The session hosted by {interaction.user.display_name} is now concluded, we invite you to leave our server. See you soon!"
         headers = {
             "X-Api-Key": api_key,
             "Content-Type": "application/json"
@@ -1332,6 +1346,8 @@ class ConfigSession:
         self.session_channel = None
         self.welcoming_channel = None
         self.welcome_text = None
+        self.session_ssu_banner = None
+        self.session_ssd_banner = None
         self.step = 0
         self.message = None
         self.cancelled = False
