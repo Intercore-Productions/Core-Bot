@@ -1,5 +1,5 @@
 **Server-Only Non-Commercial License (SONCL)**
-Version 1.0 — © \2025 \Intercore Production
+Version 1.1 — © \2025 \Intercore Productions
 
 **1. Permission Grant**
 You are granted the right to use, copy, and modify this software **only** for personal, non-commercial purposes on your own Discord server(s).
@@ -19,5 +19,14 @@ You are granted the right to use, copy, and modify this software **only** for pe
 * You may share unmodified or modified copies of this software **only** if this license is included and attribution is preserved.
 * You may not sublicense this software under a different license.
 
-**5. No Warranty**
+**5. Additional Services**
+
+* The authors do **not** provide hosting, database setup, or any other related services for this software.
+* Any setup, hosting, or database management must be handled by the user.
+
+**6. Termination**
+
+* Failure to comply with any part of this license will result in **immediate termination** of this license, removal of access to the bot, and revocation of all permissions granted under this license.
+
+**7. No Warranty**
 This software is provided “as is,” without warranty of any kind, express or implied. The authors are not responsible for any damages arising from its use.
