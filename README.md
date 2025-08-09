@@ -1,6 +1,7 @@
 # Core-Bot
 Core Bot Is a Open Source discord bot 
 that was specifically made for maple hospital servers in mind.
+
 [![License: SONCL](https://img.shields.io/badge/License-SONCL-blue.svg)](./LICENSE)
 
 
