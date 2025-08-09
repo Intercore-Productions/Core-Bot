@@ -10,4 +10,4 @@ that was specifically made for maple hospital servers in mind.
 First you want to clone the repository at 
 https://github.com/Jojo936-creator/Core-Bot.git
 
-🤷‍♂️
+# 🤷‍♂️
