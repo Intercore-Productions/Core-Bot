@@ -146,6 +146,26 @@ async def premium(interaction: discord.Interaction, guild_id: str, premium: bool
     else:
         await interaction.response.send_message(f"❌ Failed to update premium status: {patch_resp.text}", ephemeral=True)
 
+# --- Ticket Log Embed Helper ---
+def build_ticket_log_embed(opener, closer, creation_time, claimed_by, panel_title, channel_name, close_time=None):
+    emoji_open = '👤'
+    emoji_close = '🔒'
+    emoji_time = '⏰'
+    emoji_claim = '🛠️'
+    emoji_cat = '📂'
+    embed = discord.Embed(
+        title=f"{emoji_cat} Ticket Log",
+        color=discord.Color.red()
+    )
+    embed.add_field(name=f"{emoji_open} Opened by", value=opener.mention if opener else '-', inline=True)
+    embed.add_field(name=f"{emoji_close} Closed by", value=closer.mention if closer else '-', inline=True)
+    embed.add_field(name=f"{emoji_time} Creation Time", value=creation_time.strftime('%Y-%m-%d %H:%M') if creation_time else '-', inline=True)
+    embed.add_field(name=f"{emoji_time} Closing Time", value=(close_time or discord.utils.utcnow()).strftime('%Y-%m-%d %H:%M'), inline=True)
+    embed.add_field(name=f"{emoji_claim} Claimed by", value=claimed_by.mention if claimed_by else 'N/A', inline=True)
+    embed.add_field(name=f"{emoji_cat} Category", value=panel_title or '-', inline=True)
+    embed.set_footer(text=f"ID Ticket: {channel_name}")
+    return embed
+
 # /ticket-config
 @bot.tree.command(name="ticket-config", description="Configure ticket panels for this server")
 @has_premium_server()
@@ -490,18 +510,8 @@ class CloseButton(ui.Button):
                 opener = msg.author
                 creation_time = msg.created_at
                 break
-        # Compose log embed as requested
-        embed = discord.Embed(
-            title=f"{opener.display_name if opener else 'User'} Ticket",
-            color=discord.Color.red()
-        )
-        embed.add_field(name="Opened by", value=opener.mention if opener else "-", inline=True)
-        embed.add_field(name="Closed by", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Creation Time", value=creation_time.strftime('%Y-%m-%d %H:%M') if creation_time else '-', inline=True)
-        embed.add_field(name="Closing Time", value=discord.utils.utcnow().strftime('%Y-%m-%d %H:%M'), inline=True)
-        embed.add_field(name="Claimed by", value=claimed_by.mention if claimed_by else 'N/A', inline=True)
-        embed.add_field(name="Category", value=panel_title or '-', inline=True)
-        embed.set_footer(text=f"ID Ticket: {channel.name}")
+        # Compose log embed (with emojis and all fields)
+        embed = build_ticket_log_embed(opener, interaction.user, creation_time, claimed_by, panel_title, channel.name)
         transcript_file = io.BytesIO(transcript_text.encode()) if transcript_text else None
         # Send to logs channel
         if logs_channel:
@@ -517,8 +527,8 @@ class CloseButton(ui.Button):
                     await opener.send(embed=embed, file=discord.File(transcript_file, filename=f"transcript-{channel.name}.txt"))
                 else:
                     await opener.send(embed=embed)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[TicketLog] Failed to send DM to opener: {e}")
         await channel.delete(reason="Ticket closed")
     # Removed duplicate/incorrect __init__ with timeout argument
 
@@ -657,7 +667,6 @@ async def unclaim_ticket(interaction: discord.Interaction):
 @is_ticket_channel()
 @is_ticket_staff()
 async def close_ticket(interaction: discord.Interaction):
-    # Reuse logic from CloseButton
     await interaction.response.send_message("Ticket will be closed in 3 seconds...", ephemeral=True)
     await asyncio.sleep(3)
     channel = interaction.channel
@@ -679,22 +688,53 @@ async def close_ticket(interaction: discord.Interaction):
         if match:
             logs_channel_id = int(match.group(1))
     logs_channel = guild.get_channel(logs_channel_id) if logs_channel_id else None
+    # Build transcript
     transcript = []
     async for msg in channel.history(limit=100, oldest_first=True):
         author = msg.author
         content = msg.content or "[Embed/Attachment]"
         transcript.append(f"[{msg.created_at.strftime('%Y-%m-%d %H:%M')}] {author}: {content}")
     transcript_text = "\n".join(transcript)
+    # Gather ticket info for log
+    opener = None
+    creation_time = None
+    claimed_by = None
+    panel_title = None
+    panel_idx = None
+    match = re.search(r"ticket-([^-]+)-(\d+)", channel.name)
+    if match:
+        panel_idx = int(match.group(2))
+    panels_resp = requests.get(f"{SUPABASE_URL}/rest/v1/ticket_panels?guild_id=eq.{guild.id}", headers=headers)
+    panels = panels_resp.json() if panels_resp.status_code == 200 else []
+    panel = next((p for p in panels if int(p["panel_index"]) == panel_idx), None) if panel_idx is not None else None
+    if panel:
+        panel_title = panel.get("panel_title")
+    # Find opener and creation time (first non-bot user message)
+    async for msg in channel.history(limit=20, oldest_first=True):
+        if not msg.author.bot:
+            opener = msg.author
+            creation_time = msg.created_at
+            break
+    # Use the same embed as CloseButton
+    embed = build_ticket_log_embed(opener, interaction.user, creation_time, claimed_by, panel_title, channel.name)
+    import io
+    transcript_file = io.BytesIO(transcript_text.encode()) if transcript_text else None
+    # Send to logs channel
     if logs_channel:
-        embed = discord.Embed(title="Ticket Closed", color=discord.Color.red())
-        embed.add_field(name="Channel", value=channel.mention, inline=False)
-        embed.add_field(name="Closed by", value=interaction.user.mention, inline=False)
-        embed.timestamp = discord.utils.utcnow()
-        await logs_channel.send(embed=embed)
-        if transcript_text:
-            import io
-            file = discord.File(io.BytesIO(transcript_text.encode()), filename=f"transcript-{channel.name}.txt")
-            await logs_channel.send(file=file)
+        if transcript_file:
+            await logs_channel.send(embed=embed, file=discord.File(transcript_file, filename=f"transcript-{channel.name}.txt"))
+        else:
+            await logs_channel.send(embed=embed)
+    # Send to opener DM
+    if opener:
+        try:
+            if transcript_file:
+                transcript_file.seek(0)
+                await opener.send(embed=embed, file=discord.File(transcript_file, filename=f"transcript-{channel.name}.txt"))
+            else:
+                await opener.send(embed=embed)
+        except Exception as e:
+            print(f"[TicketLog] Failed to send DM to opener: {e}")
     await channel.delete(reason="Ticket closed")
 
 # /close-request
@@ -1245,7 +1285,7 @@ def get_next_case_number():
         return resp.json()[0]["case_number"] + 1
     return 1
 
-def log_mod_action(guild_id, user_id, action, moderator_id):
+def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
     case_number = get_next_case_number()
     payload = {
         "case_number": case_number,
@@ -1253,6 +1293,7 @@ def log_mod_action(guild_id, user_id, action, moderator_id):
         "user_id": user_id,
         "action": action,
         "moderator_id": moderator_id,
+        "reason": reason or "N/A",
         "date": discord.utils.utcnow().isoformat()
     }
     url = f"{SUPABASE_URL}/rest/v1/{MODLOGS_TABLE}"
@@ -1273,7 +1314,7 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "warn", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "warn", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     await interaction.followup.send(f"✅ Warned {user.mention}.", ephemeral=True)
@@ -1292,7 +1333,7 @@ async def unwarn(interaction: discord.Interaction, user: discord.Member, reason:
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "unwarn", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "unwarn", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     await interaction.followup.send(f"✅ Unwarned {user.mention}.", ephemeral=True)
@@ -1315,7 +1356,7 @@ async def mute(interaction: discord.Interaction, user: discord.Member, reason: s
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "mute", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "mute", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     await interaction.followup.send(f"✅ Muted {user.mention}.", ephemeral=True)
@@ -1338,7 +1379,7 @@ async def unmute(interaction: discord.Interaction, user: discord.Member, reason:
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "unmute", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "unmute", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     await interaction.followup.send(f"✅ Unmuted {user.mention}.", ephemeral=True)
@@ -1357,7 +1398,7 @@ async def kick(interaction: discord.Interaction, user: discord.Member, reason: s
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "kick", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "kick", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     try:
@@ -1380,7 +1421,7 @@ async def soft_ban(interaction: discord.Interaction, user: discord.Member, reaso
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "soft-ban", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "soft-ban", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     try:
@@ -1405,7 +1446,7 @@ async def t_ban(interaction: discord.Interaction, user: discord.Member, days: in
     embed.add_field(name="Days", value=str(days), inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "t-ban", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "t-ban", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     try:
@@ -1428,7 +1469,7 @@ async def p_ban(interaction: discord.Interaction, user: discord.Member, reason: 
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "p-ban", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "p-ban", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     try:
@@ -1452,7 +1493,7 @@ async def unban(interaction: discord.Interaction, user_id: int, reason: str):
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.timestamp = discord.utils.utcnow()
-    case_number = log_mod_action(interaction.guild.id, user.id, "unban", interaction.user.id)
+    case_number = log_mod_action(interaction.guild.id, user.id, "unban", interaction.user.id, reason)
     embed.add_field(name="Case Number", value=str(case_number), inline=False)
     await send_modlog_and_dm(user, embed, config["logs_channel"], interaction.guild)
     try:
@@ -1478,9 +1519,10 @@ async def modlogs(interaction: discord.Interaction, user: discord.User):
     embed = discord.Embed(title=f"Modlogs for {user}", color=discord.Color.blurple())
     for log in logs[:10]:
         mod = await bot.fetch_user(log["moderator_id"])
+        reason = log.get("reason", "N/A")
         embed.add_field(
             name=f"Case #{log['case_number']} - {log['action']}",
-            value=f"By: {mod.mention if mod else log['moderator_id']}\nDate: {log['date']}",
+            value=f"By: {mod.mention if mod else log['moderator_id']}\nDate: {log['date']}\nReason: {reason}",
             inline=False
         )
     await interaction.response.send_message(embed=embed, ephemeral=True)
