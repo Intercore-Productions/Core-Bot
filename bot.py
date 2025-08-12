@@ -2850,8 +2850,18 @@ async def servers(interaction: discord.Interaction):
     lines = []
     for g in guilds_sorted:
         lines.append(f"{g.name} | Members: {g.member_count} | Guild ID: {g.id}")
-    text = "\n".join(lines) if lines else "No servers found."
-    await interaction.response.send_message(f"**Servers using the bot:**\n{text}", ephemeral=True)
+    if not lines:
+        await interaction.response.send_message("No servers found.", ephemeral=True)
+        return
+    header = "**Servers using the bot:**\n"
+    chunk = header
+    for line in lines:
+        if len(chunk) + len(line) + 1 > 2000:
+            await interaction.followup.send(chunk, ephemeral=True)
+            chunk = ""
+        chunk += line + "\n"
+    if chunk:
+        await interaction.followup.send(chunk, ephemeral=True)
 
 # /invite
 @bot.tree.command(name="invite", description="Create a temporary invite for a server (developers only)")
@@ -2889,7 +2899,7 @@ async def on_ready():
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
-token = os.getenv("DEV_TOKEN")
+token = os.getenv("DISCORD_TOKEN")
 bot.run(token)
 
 # END          real
