@@ -2797,6 +2797,45 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     except Exception:
         pass  
 
+# /servers
+@bot.tree.command(name="servers", description="List all servers using the bot, sorted by member count")
+async def servers(interaction: discord.Interaction):
+    allowed_ids = {1099013081683738676, 1044899567822454846}
+    if interaction.user.id not in allowed_ids:
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+    guilds_sorted = sorted(bot.guilds, key=lambda g: g.member_count, reverse=True)
+    lines = []
+    for g in guilds_sorted:
+        lines.append(f"{g.name} | Members: {g.member_count} | Guild ID: {g.id}")
+    text = "\n".join(lines) if lines else "No servers found."
+    await interaction.response.send_message(f"**Servers using the bot:**\n{text}", ephemeral=True)
+
+# /invite
+@bot.tree.command(name="invite", description="Create a temporary invite for a server (developers only)")
+@app_commands.describe(guild_id="Guild ID to create invite for")
+async def invite(interaction: discord.Interaction, guild_id: str):
+    allowed_ids = {1099013081683738676, 1044899567822454846}
+    if interaction.user.id not in allowed_ids:
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+    guild = discord.utils.get(bot.guilds, id=int(guild_id))
+    if not guild:
+        await interaction.response.send_message("❌ Guild not found or bot is not in that guild.", ephemeral=True)
+        return
+    target_channel = None
+    for ch in guild.text_channels:
+        perms = ch.permissions_for(guild.me)
+        if perms.create_instant_invite:
+            target_channel = ch
+            break
+    if not target_channel:
+        await interaction.response.send_message("❌ No channel found where bot can create invites.", ephemeral=True)
+        return
+    invite_obj = await target_channel.create_invite(max_age=300, max_uses=1, unique=True)
+    await interaction.response.send_message(f"Invite for **{guild.name}**: {invite_obj.url}", ephemeral=True)
+
+
 # Start
 @bot.event
 async def on_ready():
