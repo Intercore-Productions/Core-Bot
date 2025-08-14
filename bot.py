@@ -166,7 +166,6 @@ def build_ticket_log_embed(opener, closer, creation_time, claimed_by, panel_titl
 
 # /ticket-config
 @bot.tree.command(name="ticket-config", description="Configure ticket panels for this server")
-@has_premium_server()
 async def ticket_config(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Only the Administrator can configure Tickets", ephemeral=True)
@@ -830,7 +829,6 @@ async def config_view(interaction: discord.Interaction):
 from discord import ui
 # /server-log
 @bot.tree.command(name="server-log", description="Create a Core webhook for server logs in this channel")
-@has_premium_server()
 async def server_log(interaction: discord.Interaction):
     import requests
     import json
@@ -914,7 +912,6 @@ async def server_log(interaction: discord.Interaction):
 
 # /session-config
 @bot.tree.command(name="session-config", description="Configure session messages and colors")
-@has_premium_server()
 async def session_config(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
@@ -996,7 +993,6 @@ async def session_config(interaction: discord.Interaction):
 
 # /session-reset
 @bot.tree.command(name="session-reset", description="Reset session message/color customizarion")
-@has_premium_server()
 async def session_reset(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
@@ -1045,7 +1041,6 @@ async def config_reset(interaction: discord.Interaction):
 # /maple-log
 @bot.tree.command(name="maple-log", description="Create a 'Core' webhook for your private in-game server logs.")
 @app_commands.describe(channel="The channel where the webhook will be created.")
-@has_premium_server()
 async def maple_log(interaction: discord.Interaction, channel: TextChannel):
     if not interaction.user.guild_permissions.manage_guild:
         await interaction.response.send_message(
