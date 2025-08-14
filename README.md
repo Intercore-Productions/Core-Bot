@@ -19,6 +19,6 @@ Any question open a ticket in our [Discord Community](https://discord.gg/coremap
 # Staff
 ## Developers
 > - Jojo936-creator
-> - taco_dark 
+> - TacoDark 
 ## Contributors
 > - N/A
