@@ -17,7 +17,7 @@ We **Don't provide** mentoring/help for Database & Hosting (Check SONCL License)
 Any question open a ticket in our [Discord Community](https://discord.gg/coremaplehospital)
 
 # Staff
-## Developer
+## Developers
 > - Jojo936-creator
 > - taco_dark 
 ## Contributors
