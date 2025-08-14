@@ -41,7 +41,6 @@ def load_config(guild_id):
         return None
     row = data[0]
     announce_roles = json.loads(row["announce_roles"]) if row.get("announce_roles") else []
-    # Return all config fields, including premium_server and session custom fields
     config = {
         "api_key": row.get("api_key"),
         "announce_roles": announce_roles,
@@ -146,7 +145,6 @@ async def premium(interaction: discord.Interaction, guild_id: str, premium: bool
     else:
         await interaction.response.send_message(f"❌ Failed to update premium status: {patch_resp.text}", ephemeral=True)
 
-# --- Ticket Log Embed Helper ---
 def build_ticket_log_embed(opener, closer, creation_time, claimed_by, panel_title, channel_name, close_time=None):
     emoji_open = '👤'
     emoji_close = '🔒'
@@ -191,7 +189,6 @@ async def ticket_config(interaction: discord.Interaction):
         await interaction.followup.send(embed=discord.Embed(description="⏰ Timeout or error, try again later.", color=discord.Color.red()), ephemeral=True)
         return
 
-    # Ask for Ticket Logs Channel
     embed = discord.Embed(
         title="Ticket Logs Channel",
         description="Please mention the channel where ticket logs should be sent (e.g. #logs).",
@@ -310,7 +307,6 @@ async def ticket_config(interaction: discord.Interaction):
 from discord import ui, TextChannel, Embed, SelectOption, Interaction, app_commands, utils, PermissionOverwrite
 import asyncio
 
-# --- Ticket Panel View and Modal ---
 class TicketPanelDropdown(ui.View):
     def __init__(self, panels, panels_message, form_enabled, form_question, guild, user):
         super().__init__(timeout=None)
@@ -335,7 +331,6 @@ class TicketPanelSelect(ui.Select):
         form_question = self.parent_view.form_question
         guild = self.parent_view.guild
         user = interaction.user
-        # Check if ticket already exists for user in this panel
         ticket_channel_name = f"ticket-{user.id}-{panel_idx}"
         for ch in guild.text_channels:
             if ch.name == ticket_channel_name:
@@ -366,7 +361,6 @@ async def create_ticket_channel(interaction, panel, user, answer, panel_idx):
         guild.default_role: PermissionOverwrite(view_channel=False),
         user: PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
     }
-    # Try to resolve support staff roles (multiple allowed, comma-separated)
     staff_roles = []
     import re
     staff_raw = panel['support_staff']
@@ -374,7 +368,7 @@ async def create_ticket_channel(interaction, panel, user, answer, panel_idx):
         part = part.strip()
         if not part:
             continue
-        # Try ID/mention
+        # ID
         try:
             staff_id = int(re.sub(r'\D', '', part))
             role = guild.get_role(staff_id)
@@ -383,13 +377,11 @@ async def create_ticket_channel(interaction, panel, user, answer, panel_idx):
                 continue
         except Exception:
             pass
-        # Try by name
         role = utils.get(guild.roles, name=part)
         if role:
             staff_roles.append(role)
     for role in staff_roles:
         overwrites[role] = PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
-    # Try to resolve category
     category = None
     try:
         cat_id = int(panel['ticket_category'])
@@ -397,7 +389,6 @@ async def create_ticket_channel(interaction, panel, user, answer, panel_idx):
     except Exception:
         # fallback: try to get by name
         category = utils.get(guild.categories, name=panel['ticket_category'])
-    # Sanitize username for channel name
     import re
     safe_username = re.sub(r'[^a-zA-Z0-9\-_]', '-', user.name.lower())[:20]
     ticket_channel_name = f"ticket-{safe_username}-{panel_idx}"
@@ -407,24 +398,20 @@ async def create_ticket_channel(interaction, panel, user, answer, panel_idx):
         overwrites=overwrites,
         reason="Support ticket created"
     )
-    # Ping user and staff
     ping_content = f"{user.mention}"
     if staff_roles:
         ping_content += " " + " ".join(r.mention for r in staff_roles)
     await channel.send(ping_content)
-    # Ticket embed
     embed = Embed(title=panel['panel_title'], description=panel['ticket_message'], color=discord.Color.blurple())
     if answer:
         embed.add_field(name="User Answer", value=answer, inline=False)
     await channel.send(embed=embed)
-    # Add claim/close buttons
     await channel.send(view=TicketActionButtons(staff_roles, user))
     await interaction.response.send_message(f"Ticket created: {channel.mention}", ephemeral=True)
 
 class TicketActionButtons(ui.View):
     def __init__(self, staff_roles, opener):
         super().__init__(timeout=None)
-        # Accept both single and multiple staff roles for compatibility
         if isinstance(staff_roles, list):
             self.staff_roles = staff_roles
         elif staff_roles:
@@ -483,14 +470,12 @@ class CloseButton(ui.Button):
             if match:
                 logs_channel_id = int(match.group(1))
         logs_channel = guild.get_channel(logs_channel_id) if logs_channel_id else None
-        # Build transcript
         transcript = []
         async for msg in channel.history(limit=100, oldest_first=True):
             author = msg.author
             content = msg.content or "[Embed/Attachment]"
             transcript.append(f"[{msg.created_at.strftime('%Y-%m-%d %H:%M')}] {author}: {content}")
         transcript_text = "\n".join(transcript)
-        # Gather ticket info for log
         opener = None
         creation_time = None
         claimed_by = getattr(self.parent_view, 'claimed_by', None)
@@ -504,22 +489,18 @@ class CloseButton(ui.Button):
         panel = next((p for p in panels if int(p["panel_index"]) == panel_idx), None) if panel_idx is not None else None
         if panel:
             panel_title = panel.get("panel_title")
-        # Find opener and creation time (first non-bot user message)
         async for msg in channel.history(limit=20, oldest_first=True):
             if not msg.author.bot:
                 opener = msg.author
                 creation_time = msg.created_at
                 break
-        # Compose log embed (with emojis and all fields)
         embed = build_ticket_log_embed(opener, interaction.user, creation_time, claimed_by, panel_title, channel.name)
         transcript_file = io.BytesIO(transcript_text.encode()) if transcript_text else None
-        # Send to logs channel
         if logs_channel:
             if transcript_file:
                 await logs_channel.send(embed=embed, file=discord.File(transcript_file, filename=f"transcript-{channel.name}.txt"))
             else:
                 await logs_channel.send(embed=embed)
-        # Send to opener DM
         if opener:
             try:
                 if transcript_file:
@@ -530,7 +511,6 @@ class CloseButton(ui.Button):
             except Exception as e:
                 print(f"[TicketLog] Failed to send DM to opener: {e}")
         await channel.delete(reason="Ticket closed")
-    # Removed duplicate/incorrect __init__ with timeout argument
 
 class AcceptCloseButton(ui.Button):
     def __init__(self, parent_view):
@@ -558,13 +538,11 @@ class DenyCloseButton(ui.Button):
 # --- Ticket Staff Commands ---
 def is_ticket_channel():
     async def predicate(interaction: discord.Interaction):
-        # Only allow in ticket channels (name starts with ticket-)
         return interaction.channel and interaction.channel.name.startswith("ticket-")
     return app_commands.check(predicate)
 
 def is_ticket_staff():
     async def predicate(interaction: discord.Interaction):
-        # Allow support staff or admins
         SUPABASE_URL = os.getenv("SUPABASE_URL")
         SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
         headers = {
@@ -575,7 +553,6 @@ def is_ticket_staff():
         guild_id = str(interaction.guild.id)
         resp = requests.get(f"{SUPABASE_URL}/rest/v1/ticket_panels?guild_id=eq.{guild_id}", headers=headers)
         panels = resp.json() if resp.status_code == 200 else []
-        # Find panel for this channel (by index in name)
         import re
         match = re.search(r"ticket-[^-]+-(\d+)", interaction.channel.name)
         if not match:
@@ -584,7 +561,6 @@ def is_ticket_staff():
         panel = next((p for p in panels if int(p["panel_index"]) == idx), None)
         if not panel:
             return False
-        # Support multiple staff roles (IDs/mentions/names, comma-separated)
         staff_roles = []
         staff_raw = panel["support_staff"]
         for part in staff_raw.split(','):
@@ -609,7 +585,6 @@ def is_ticket_staff():
         return False
     return app_commands.check(predicate)
 
-# --- Close Request Accept/Deny Buttons ---
 import io
 class CloseRequestView(discord.ui.View):
     def __init__(self, opener):
@@ -648,7 +623,6 @@ class DenyCloseButton(discord.ui.Button):
 @is_ticket_channel()
 @is_ticket_staff()
 async def claim_ticket(interaction: discord.Interaction):
-    # Mark as claimed (send embed)
     embed = discord.Embed(description=f"Ticket claimed by {interaction.user.mention}.", color=discord.Color.green())
     await interaction.channel.send(embed=embed)
     await interaction.response.send_message("You have claimed this ticket.", ephemeral=True)
@@ -688,14 +662,13 @@ async def close_ticket(interaction: discord.Interaction):
         if match:
             logs_channel_id = int(match.group(1))
     logs_channel = guild.get_channel(logs_channel_id) if logs_channel_id else None
-    # Build transcript
+    # trsc
     transcript = []
     async for msg in channel.history(limit=100, oldest_first=True):
         author = msg.author
         content = msg.content or "[Embed/Attachment]"
         transcript.append(f"[{msg.created_at.strftime('%Y-%m-%d %H:%M')}] {author}: {content}")
     transcript_text = "\n".join(transcript)
-    # Gather ticket info for log
     opener = None
     creation_time = None
     claimed_by = None
@@ -709,23 +682,20 @@ async def close_ticket(interaction: discord.Interaction):
     panel = next((p for p in panels if int(p["panel_index"]) == panel_idx), None) if panel_idx is not None else None
     if panel:
         panel_title = panel.get("panel_title")
-    # Find opener and creation time (first non-bot user message)
     async for msg in channel.history(limit=20, oldest_first=True):
         if not msg.author.bot:
             opener = msg.author
             creation_time = msg.created_at
             break
-    # Use the same embed as CloseButton
     embed = build_ticket_log_embed(opener, interaction.user, creation_time, claimed_by, panel_title, channel.name)
     import io
     transcript_file = io.BytesIO(transcript_text.encode()) if transcript_text else None
-    # Send to logs channel
+    # go to logs
     if logs_channel:
         if transcript_file:
             await logs_channel.send(embed=embed, file=discord.File(transcript_file, filename=f"transcript-{channel.name}.txt"))
         else:
             await logs_channel.send(embed=embed)
-    # Send to opener DM
     if opener:
         try:
             if transcript_file:
@@ -741,7 +711,6 @@ async def close_ticket(interaction: discord.Interaction):
 @bot.tree.command(name="close-request", description="Request ticket closure (user)")
 @is_ticket_channel()
 async def close_request(interaction: discord.Interaction):
-    # Find ticket opener (first non-bot user message)
     opener = None
     async for msg in interaction.channel.history(limit=20, oldest_first=True):
         if not msg.author.bot:
