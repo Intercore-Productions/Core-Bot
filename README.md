@@ -10,4 +10,16 @@ that was specifically made for maple hospital servers in mind.
 First you want to clone the repository at 
 https://github.com/Jojo936-creator/Core-Bot.git
 
-# 🤷‍♂️
+Then use an Hosting Provider or use your local desktop to host the bot.
+
+We **Don't provide** mentoring/help for Database & Hosting (Check SONCL License).
+
+Any question open a ticket in our [Discord Community](https://discord.gg/coremaplehospital)
+
+# Staff
+## Developer
+> Jojo936-creator
+> taco_dark 
+
+## Contributors
+> N/A
