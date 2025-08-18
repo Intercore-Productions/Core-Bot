@@ -782,6 +782,43 @@ async def send_panel(interaction: Interaction, channel: TextChannel):
     await channel.send(embed=embed, view=view)
     await interaction.response.send_message(f"Support panel sent in {channel.mention}", ephemeral=True)
 
+API_URL = "https://maple-api.marizma.games/v1/server/bans"
+
+@app_commands.command(name="game-bans", description="Retrieve the list of game server bans.")
+@has_premium_server()
+async def game_bans(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message("You don’t have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer()  # Defer to avoid timeout
+
+    headers = {
+        "X-Api-Key": "api_key",
+        "Accept": "application/json"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(API_URL, headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    bans = data.get("data", {}).get("Bans", [])
+                    if bans:
+                        bans_list = "\n".join(str(ban) for ban in bans)
+                        await interaction.followup.send(f"🚫 **Bans List:**\n```\n{bans_list}\n```")
+                    else:
+                        await interaction.followup.send("✅ No bans found on the server.")
+                elif resp.status == 401:
+                    await interaction.followup.send("❌ Unauthorized. Check your API key.")
+                elif resp.status == 429:
+                    await interaction.followup.send("⚠️ Rate limit exceeded. Please try again later.")
+                else:
+                    await interaction.followup.send("❌ An unexpected error occurred.")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Request failed: {e}")
+
+
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
 async def config_view(interaction: discord.Interaction):
