@@ -891,7 +891,7 @@ async def game_queue(interaction: discord.Interaction):
     private="Make the server private",
     min_level="Minimum level required to join"
 )
-@has_premium_server
+@has_premium_server()
 async def game_settings(
     interaction: discord.Interaction,
     hide_from_list: Optional[bool] = None,
