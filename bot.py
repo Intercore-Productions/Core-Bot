@@ -874,6 +874,10 @@ def get_audio_source(url):
         'noplaylist': True,
         'outtmpl': 'music.%(ext)s',
     }
+    import os
+    cookies_path = 'youtube_cookies.txt'
+    if os.path.exists(cookies_path):
+        ydl_opts['cookiefile'] = cookies_path
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         audio_url = info['url']
@@ -898,7 +902,10 @@ async def play_next(guild, interaction=None):
     except Exception as e:
         if interaction:
             embed = discord.Embed(title="❌ Error", description=f"Failed to play: {e}", color=discord.Color.red())
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
         return await play_next(guild)
     vc = guild.voice_client
     if not vc:
@@ -906,7 +913,10 @@ async def play_next(guild, interaction=None):
     music_playing[guild.id] = True
     embed = discord.Embed(title="🎶 Now Playing", description=f"[{title}]({url})\nRequested by: {requester.mention}", color=discord.Color.blurple())
     if interaction:
-        await interaction.response.send_message(embed=embed)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.followup.send(embed=embed)
     else:
         channel = requester.voice.channel if requester.voice else None
         if channel:
@@ -940,12 +950,18 @@ async def music_play(interaction: discord.Interaction, query: str):
         url = f"https://www.youtube.com/watch?v={info['id']}"
         add_to_queue(interaction.guild.id, url, interaction.user)
         embed = discord.Embed(title="🎵 Added to Queue", description=f"[{info['title']}]({url})", color=discord.Color.blurple())
-        await interaction.response.send_message(embed=embed)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.followup.send(embed=embed)
         if not music_playing.get(interaction.guild.id):
             await play_next(interaction.guild, interaction)
     except Exception as e:
         embed = discord.Embed(title="❌ Error", description=f"Failed to add: {e}", color=discord.Color.red())
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="pause", description="Pause the music")
 @has_premium_server()
