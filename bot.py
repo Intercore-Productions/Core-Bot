@@ -789,34 +789,39 @@ BANS_URL = 'https://maple-api.marizma.games/v1/server/bans'
 @has_premium_server()
 async def game_bans(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message("You don’t have permission to use this command.", ephemeral=True)
+        await interaction.response.send_message("❌ You don’t have permission to use this command.", ephemeral=True)
         return
-    await interaction.response.defer() 
+
+    config = load_config(interaction.guild.id)
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
 
     headers = {
         "X-Api-Key": config["api_key"],
         "Accept": "application/json"
     }
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(BANS_URL, headers=headers) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    bans = data.get("data", {}).get("Bans", [])
-                    if bans:
-                        bans_list = "\n".join(str(ban) for ban in bans)
-                        await interaction.followup.send(f"🚫 **Bans List:**\n```\n{bans_list}\n```")
-                    else:
-                        await interaction.followup.send("✅ No bans found on the server.")
-                elif resp.status == 401:
-                    await interaction.followup.send("❌ Unauthorized. Check your API key.")
-                elif resp.status == 429:
-                    await interaction.followup.send("⚠️ Rate limit exceeded. Please try again later.")
-                else:
-                    await interaction.followup.send("❌ An unexpected error occurred.")
-        except Exception as e:
-            await interaction.followup.send(f"❌ Request failed: {e}")
+    try:
+        response = requests.get(BANS_URL, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            bans = data.get("data", {}).get("Bans", [])
+            if bans:
+                bans_list = "\n".join(str(ban) for ban in bans)
+                await interaction.followup.send(f"🚫 **Bans List:**\n```\n{bans_list}\n```")
+            else:
+                await interaction.followup.send("✅ No bans found on the server.")
+        elif response.status_code == 401:
+            await interaction.followup.send("❌ Unauthorized. Please check your API key.")
+        elif response.status_code == 429:
+            await interaction.followup.send("⚠️ Rate limit exceeded. Please try again later.")
+        else:
+            await interaction.followup.send(f"❌ Failed to fetch bans. Status: {response.status_code}\n{response.text}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
 
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
