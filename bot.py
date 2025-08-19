@@ -819,6 +819,204 @@ async def suggest(interaction: discord.Interaction, title: str, suggestion: str)
         await msg.add_reaction(emoji)
     await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
 
+import yt_dlp
+import psutil
+import functools
+from discord import FFmpegPCMAudio
+
+music_queue = {}
+music_playing = {}
+
+def get_guild_queue(guild_id):
+    return music_queue.setdefault(guild_id, [])
+
+def add_to_queue(guild_id, url, requester):
+    queue = get_guild_queue(guild_id)
+    queue.append({"url": url, "requester": requester})
+
+def clear_queue(guild_id):
+    music_queue[guild_id] = []
+
+def get_cpu_usage():
+    return psutil.cpu_percent(interval=0.5)
+
+async def ensure_voice(interaction):
+    if not interaction.user.voice or not interaction.user.voice.channel:
+        embed = discord.Embed(title="❌ Error", description="You must be in a voice channel.", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return None
+    channel = interaction.user.voice.channel
+    if interaction.guild.voice_client:
+        if interaction.guild.voice_client.channel != channel:
+            await interaction.guild.voice_client.move_to(channel)
+    else:
+        await channel.connect()
+    return interaction.guild.voice_client
+
+def yt_search(query):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'noplaylist': True,
+        'default_search': 'ytsearch',
+        'quiet': True,
+        'extract_flat': 'in_playlist',
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(query, download=False)
+        if 'entries' in info:
+            info = info['entries'][0]
+        return info
+
+def get_audio_source(url):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'noplaylist': True,
+        'outtmpl': 'music.%(ext)s',
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        audio_url = info['url']
+        title = info.get('title', 'Unknown')
+    ffmpeg_opts = {
+        'options': '-vn'
+    }
+    return FFmpegPCMAudio(audio_url, **ffmpeg_opts), title
+
+async def play_next(guild, interaction=None):
+    queue = get_guild_queue(guild.id)
+    if not queue:
+        music_playing[guild.id] = False
+        if guild.voice_client:
+            await guild.voice_client.disconnect()
+        return
+    item = queue.pop(0)
+    url = item['url']
+    requester = item['requester']
+    try:
+        source, title = get_audio_source(url)
+    except Exception as e:
+        if interaction:
+            embed = discord.Embed(title="❌ Error", description=f"Failed to play: {e}", color=discord.Color.red())
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        return await play_next(guild)
+    vc = guild.voice_client
+    if not vc:
+        return
+    music_playing[guild.id] = True
+    embed = discord.Embed(title="🎶 Now Playing", description=f"[{title}]({url})\nRequested by: {requester.mention}", color=discord.Color.blurple())
+    if interaction:
+        await interaction.response.send_message(embed=embed)
+    else:
+        channel = requester.voice.channel if requester.voice else None
+        if channel:
+            text_channels = [c for c in guild.text_channels if c.permissions_for(guild.me).send_messages]
+            if text_channels:
+                await text_channels[0].send(embed=embed)
+    def after_play(err):
+        if err:
+            print(f"Music error: {err}")
+        fut = functools.partial(asyncio.run_coroutine_threadsafe, play_next(guild), bot.loop)
+        fut()
+    vc.play(source, after=after_play)
+
+@bot.tree.command(name="join", description="Join your voice channel")
+@has_premium_server()
+async def music_join(interaction: discord.Interaction):
+    vc = await ensure_voice(interaction)
+    if vc:
+        embed = discord.Embed(title="✅ Joined", description=f"Joined {vc.channel.mention}", color=discord.Color.green())
+        await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="play", description="Play music from YouTube")
+@app_commands.describe(query="YouTube URL or search query")
+@has_premium_server()
+async def music_play(interaction: discord.Interaction, query: str):
+    vc = await ensure_voice(interaction)
+    if not vc:
+        return
+    try:
+        info = yt_search(query)
+        url = f"https://www.youtube.com/watch?v={info['id']}"
+        add_to_queue(interaction.guild.id, url, interaction.user)
+        embed = discord.Embed(title="🎵 Added to Queue", description=f"[{info['title']}]({url})", color=discord.Color.blurple())
+        await interaction.response.send_message(embed=embed)
+        if not music_playing.get(interaction.guild.id):
+            await play_next(interaction.guild, interaction)
+    except Exception as e:
+        embed = discord.Embed(title="❌ Error", description=f"Failed to add: {e}", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="pause", description="Pause the music")
+@has_premium_server()
+async def music_pause(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if not vc or not vc.is_playing():
+        embed = discord.Embed(title="❌ Error", description="No music is playing.", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+    vc.pause()
+    embed = discord.Embed(title="⏸️ Paused", description="Music paused.", color=discord.Color.orange())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="resume", description="Resume the music")
+@has_premium_server()
+async def music_resume(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if not vc or not vc.is_paused():
+        embed = discord.Embed(title="❌ Error", description="Music is not paused.", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+    vc.resume()
+    embed = discord.Embed(title="▶️ Resumed", description="Music resumed.", color=discord.Color.green())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="stop", description="Stop the music and clear the queue")
+@has_premium_server()
+async def music_stop(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if not vc:
+        embed = discord.Embed(title="❌ Error", description="Not connected to a voice channel.", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+    vc.stop()
+    clear_queue(interaction.guild.id)
+    music_playing[interaction.guild.id] = False
+    embed = discord.Embed(title="⏹️ Stopped", description="Music stopped and queue cleared.", color=discord.Color.red())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="leave", description="Leave the voice channel")
+@has_premium_server()
+async def music_leave(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if not vc:
+        embed = discord.Embed(title="❌ Error", description="Not connected to a voice channel.", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+    await vc.disconnect()
+    clear_queue(interaction.guild.id)
+    music_playing[interaction.guild.id] = False
+    embed = discord.Embed(title="👋 Left", description="Disconnected from voice channel.", color=discord.Color.orange())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="queue", description="Show the current music queue")
+@has_premium_server()
+async def music_queue_cmd(interaction: discord.Interaction):
+    queue = get_guild_queue(interaction.guild.id)
+    if not queue:
+        embed = discord.Embed(title="🎶 Queue", description="The queue is empty.", color=discord.Color.blurple())
+        await interaction.response.send_message(embed=embed)
+        return
+    desc = "\n".join([f"{i+1}. [{item['url']}] Requested by: {item['requester'].mention}" for i, item in enumerate(queue)])
+    embed = discord.Embed(title="🎶 Queue", description=desc, color=discord.Color.blurple())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="cpu", description="Show bot CPU usage")
+async def music_cpu(interaction: discord.Interaction):
+    usage = get_cpu_usage()
+    embed = discord.Embed(title="🖥️ CPU Usage", description=f"Current CPU usage: {usage}%", color=discord.Color.blurple())
+    await interaction.response.send_message(embed=embed)
+
 # /game-bans
 BANS_URL = 'https://maple-api.marizma.games/v1/server/bans'
 
