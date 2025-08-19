@@ -10,6 +10,7 @@ import asyncio
 import aiohttp
 from dotenv import load_dotenv
 from discord import ui, TextChannel, Embed
+from typing import Optional, List, Dict
 load_dotenv()
 
 intents = discord.Intents.default()
