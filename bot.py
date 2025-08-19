@@ -804,24 +804,30 @@ async def game_bans(interaction: discord.Interaction):
         "Accept": "application/json"
     }
 
+    await interaction.response.defer(thinking=True)
+
     try:
-        response = requests.get(BANS_URL, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            bans = data.get("data", {}).get("Bans", [])
-            if bans:
-                bans_list = "\n".join(f"roblox_user ({ban})" for ban in bans)
-                await interaction.followup.send(f"🚫 **Bans List:**\n```\n{bans_list}\n```")
-            else:
-                await interaction.followup.send("✅ No bans found on the server.")
-        elif response.status_code == 401:
-            await interaction.followup.send("❌ Unauthorized. Please check your API key.")
-        elif response.status_code == 429:
-            await interaction.followup.send("⚠️ Rate limit exceeded. Please try again later.")
+        resp = requests.get(BANS_URL, headers=headers)
+        if resp.status_code == 200:
+            bans = resp.json().get("data", {}).get("Bans", [])
+            if not bans:
+                return await interaction.followup.send("✅ No bans found on the server.")
+
+            lookup_url = "https://users.roblox.com/v1/users"
+            usernames = {}
+            for uid in bans:
+                r = requests.get(f"https://users.roblox.com/v1/users/{uid}")
+                if r.status_code == 200:
+                    usernames[uid] = r.json().get("name", f"Unknown[{uid}]")
+                else:
+                    usernames[uid] = f"Unknown[{uid}]"
+
+            formatted = "\n".join(f"{usernames[uid]} (ID: {uid})" for uid in bans)
+            await interaction.followup.send(f"🚫 **Bans List:**\n```\n{formatted}\n```")
         else:
-            await interaction.followup.send(f"❌ Failed to fetch bans. Status: {response.status_code}\n{response.text}")
+            await interaction.followup.send(f"❌ Error: {resp.status_code}")
     except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)}")
+        await interaction.followup.send(f"❌ Exception: {e}")
 
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
