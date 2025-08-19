@@ -810,7 +810,7 @@ async def game_bans(interaction: discord.Interaction):
             data = response.json()
             bans = data.get("data", {}).get("Bans", [])
             if bans:
-                bans_list = "\n".join(str(ban) for ban in bans)
+                bans_list = "\n".join(f"roblox_user ({ban})" for ban in bans)
                 await interaction.followup.send(f"🚫 **Bans List:**\n```\n{bans_list}\n```")
             else:
                 await interaction.followup.send("✅ No bans found on the server.")
