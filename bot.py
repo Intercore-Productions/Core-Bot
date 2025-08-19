@@ -783,13 +783,14 @@ async def send_panel(interaction: Interaction, channel: TextChannel):
     await interaction.response.send_message(f"Support panel sent in {channel.mention}", ephemeral=True)
 
 # /game-bans
+BANS_URL = 'https://maple-api.marizma.games/v1/server/bans'
+
 @bot.tree.command(name="game-bans", description="Retrieve the list of game server bans.")
 @has_premium_server()
 async def game_bans(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_messages:
         await interaction.response.send_message("You don’t have permission to use this command.", ephemeral=True)
         return
-
     await interaction.response.defer() 
 
     headers = {
@@ -799,7 +800,7 @@ async def game_bans(interaction: discord.Interaction):
 
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(API_URL, headers=headers) as resp:
+            async with session.get(BANS_URL, headers=headers) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     bans = data.get("data", {}).get("Bans", [])
