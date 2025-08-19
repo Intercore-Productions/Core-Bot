@@ -883,6 +883,64 @@ async def game_queue(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
 
+# /game-settings
+@bot.tree.command(name="game-settings", description="Update the server's settings.")
+@app_commands.describe(
+    hide_from_list="Hide the server from the public list",
+    private="Make the server private",
+    min_level="Minimum level required to join"
+)
+@has_premium_server
+async def game_settings(
+    interaction: discord.Interaction,
+    hide_from_list: Optional[bool] = None,
+    private: Optional[bool] = None,
+    min_level: Optional[int] = None
+):
+    if not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message("❌ You need the **Manage Server** permission to use this command.", ephemeral=True)
+        return
+
+    config = load_config(interaction.guild.id)
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+
+    if hide_from_list is None and private is None and min_level is None:
+        await interaction.response.send_message("⚠️ You must provide at least one setting to change.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    headers = {
+        "X-Api-Key": config["api_key"],
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    payload = {}
+    if hide_from_list is not None:
+        payload["HideFromList"] = hide_from_list
+    if private is not None:
+        payload["Private"] = private
+    if min_level is not None:
+        payload["minLevel"] = min_level
+
+    try:
+        response = requests.post("https://maple-api.marizma.games/v1/server/setSetting", headers=headers, json=payload)
+        if response.status_code == 200:
+            await interaction.followup.send("✅ Server settings updated successfully.")
+        elif response.status_code == 400:
+            await interaction.followup.send("❌ Invalid request or server is already banned.")
+        elif response.status_code == 401:
+            await interaction.followup.send("❌ Unauthorized. Please check your API key.")
+        elif response.status_code == 403:
+            await interaction.followup.send("❌ Invalid setting or permission denied.")
+        else:
+            await interaction.followup.send(f"❌ Unexpected error: {response.status_code}\n{response.text}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
 async def config_view(interaction: discord.Interaction):
