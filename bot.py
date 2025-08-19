@@ -835,6 +835,54 @@ async def game_bans(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}")
 
+# /game-queue
+@bot.tree.command(name="game-queue", description="Show the current server queue.")
+@has_premium_server()
+async def game_queue(interaction: discord.Interaction):
+    config = load_config(interaction.guild.id)
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    headers = {
+        "X-Api-Key": config["api_key"],
+        "Accept": "application/json"
+    }
+
+    try:
+        response = requests.get("https://maple-api.marizma.games/v1/server/queue", headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            queue_ids = data.get("data", {}).get("Queue", [])
+
+            if not queue_ids:
+                await interaction.followup.send("✅ The queue is currently empty.")
+                return
+
+            usernames = {}
+            for uid in queue_ids:
+                try:
+                    roblox_resp = requests.get(f"https://users.roblox.com/v1/users/{uid}")
+                    if roblox_resp.status_code == 200:
+                        usernames[uid] = roblox_resp.json().get("name", f"Unknown ({uid})")
+                    else:
+                        usernames[uid] = f"Unknown ({uid})"
+                except Exception:
+                    usernames[uid] = f"Unknown ({uid})"
+
+            queue_list = "\n".join(f"{usernames[uid]} ({uid})" for uid in queue_ids)
+            await interaction.followup.send(f"🎮 **Current Queue:**\n```\n{queue_list}\n```")
+        elif response.status_code == 401:
+            await interaction.followup.send("❌ Unauthorized. Please check your API key.")
+        elif response.status_code == 429:
+            await interaction.followup.send("⚠️ Rate limit exceeded. Please try again later.")
+        else:
+            await interaction.followup.send(f"❌ Failed to fetch queue. Status: {response.status_code}\n{response.text}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
 async def config_view(interaction: discord.Interaction):
