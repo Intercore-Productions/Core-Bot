@@ -794,7 +794,7 @@ async def game_bans(interaction: discord.Interaction):
     await interaction.response.defer() 
 
     headers = {
-        "X-Api-Key": api_key,
+        "X-Api-Key": config["api_key"],
         "Accept": "application/json"
     }
 
