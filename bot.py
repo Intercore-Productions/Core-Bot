@@ -189,6 +189,7 @@ async def ticket_config(interaction: discord.Interaction):
         await interaction.followup.send(embed=discord.Embed(description="⏰ Timeout or error, try again later.", color=discord.Color.red()), ephemeral=True)
         return
 
+    # Ask for Ticket Logs Channel
     embed = discord.Embed(
         title="Ticket Logs Channel",
         description="Please mention the channel where ticket logs should be sent (e.g. #logs).",
@@ -307,6 +308,7 @@ async def ticket_config(interaction: discord.Interaction):
 from discord import ui, TextChannel, Embed, SelectOption, Interaction, app_commands, utils, PermissionOverwrite
 import asyncio
 
+# --- Ticket Panel View and Modal ---
 class TicketPanelDropdown(ui.View):
     def __init__(self, panels, panels_message, form_enabled, form_question, guild, user):
         super().__init__(timeout=None)
@@ -782,6 +784,40 @@ async def send_panel(interaction: Interaction, channel: TextChannel):
     view = TicketPanelDropdown(panels, panels_message, form_enabled, form_question, interaction.guild, interaction.user)
     await channel.send(embed=embed, view=view)
     await interaction.response.send_message(f"Support panel sent in {channel.mention}", ephemeral=True)
+
+# /suggest
+from discord import Embed
+from discord.ext import commands
+import time
+
+SUGGEST_CHANNEL_ID = 1407400015621521559
+SUGGEST_GUILD_ID = 1383077857554727085
+suggest_cooldowns = {}
+
+@bot.tree.command(name="suggest", description="Send a Suggestion to our server")
+@app_commands.describe(title="Suggestion Title", suggestion="Your suggestion")
+async def suggest(interaction: discord.Interaction, title: str, suggestion: str):
+    user_id = interaction.user.id
+    now = time.time()
+    last = suggest_cooldowns.get(user_id, 0)
+    if now - last < 1800:
+        mins = int((1800 - (now - last)) // 60)
+        secs = int((1800 - (now - last)) % 60)
+        return await interaction.response.send_message(f"⏳ TIMEOUT: You must wait {mins}m {secs}s to send another suggestion.", ephemeral=True)
+    suggest_cooldowns[user_id] = now
+    guild = bot.get_guild(SUGGEST_GUILD_ID)
+    if not guild:
+        return await interaction.response.send_message("❌ Guild not found.", ephemeral=True)
+    channel = guild.get_channel(SUGGEST_CHANNEL_ID)
+    if not channel:
+        return await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+    embed = Embed(title=title, description=suggestion, color=discord.Color.blurple())
+    embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url)
+    embed.set_footer(text=f"User ID: {user_id}")
+    msg = await channel.send(embed=embed)
+    for emoji in ["👍", "🤷‍♂️", "👎"]:
+        await msg.add_reaction(emoji)
+    await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
 
 # /game-bans
 BANS_URL = 'https://maple-api.marizma.games/v1/server/bans'
