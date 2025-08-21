@@ -3310,6 +3310,6 @@ async def on_ready():
         print(f"Error syncing commands: {e}")
 
 token = os.getenv("DISCORD_TOKEN")
-bot.run("MTM4MDY0NjM0NDk3NjQ5ODc3OA.GpM9zA.KAMNJyLEz5K1DzMmLfYgwLFX9qKoeFOIagCiEM")
+bot.run(token)
 
 # END          real
