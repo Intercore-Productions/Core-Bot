@@ -10,4 +10,4 @@ if token is None:
 elif len(token) < 50:
     print(f"⚠️ Token caricato ma troppo corto: {token}")
 else:
-    print(f"✅ Token caricato correttamente: {token[:10]}..."
+    print(f"✅ Token caricato correttamente: {token[:10]}...")
