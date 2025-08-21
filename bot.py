@@ -3240,7 +3240,7 @@ async def on_ready():
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
-token = os.getenv("DISCORD_TOKEN")
+token = os.getenv("TOKEN")
 bot.run(token)
 
 # END          real
