@@ -1229,7 +1229,6 @@ async def game_settings(
             await interaction.followup.send(f"❌ Unexpected error: {response.status_code}\n{response.text}")
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
->>>>>>> 0b29cd0f2196ad46aacd59f1d8e730df0359e511
 
 # /config-view
 @bot.tree.command(name="config-view", description="View current configuration")
