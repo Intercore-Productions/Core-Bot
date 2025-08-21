@@ -3230,8 +3230,8 @@ async def on_ready():
         client=bot,
         nodes=[
             wavelink.Node(
-                uri='http://localhost:2333',
-                password='youshallnotpass'
+                uri='http://localhost:5001',
+                password='CoreBot25'
             )
         ]
     )
