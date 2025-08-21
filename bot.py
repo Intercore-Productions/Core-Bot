@@ -785,7 +785,6 @@ async def send_panel(interaction: Interaction, channel: TextChannel):
     await channel.send(embed=embed, view=view)
     await interaction.response.send_message(f"Support panel sent in {channel.mention}", ephemeral=True)
 
-<<<<<<< HEAD
 API_URL = "https://maple-api.marizma.games/v1/server/bans"
 
 @app_commands.command(name="game-bans", description="Retrieve the list of game server bans.")
