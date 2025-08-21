@@ -867,14 +867,19 @@ queues = {}
 
 @bot.event
 async def on_ready():
-    print(f"Bot online come {bot.user}")
+    print(f"Bot is online as {bot.user}")
+
     await bot.tree.sync()
-    
+
     await wavelink.Pool.connect(
         client=bot,
-        nodes=[wavelink.Node(uri='http://127.0.0.1:2333', password='youshallnotpass')]
+        nodes=[
+            wavelink.Node(
+                uri='http://localhost:2333',
+                password='youshallnotpass'
+            )
+        ]
     )
-
 
 async def get_player(interaction: discord.Interaction) -> wavelink.Player:
     if not interaction.guild:
