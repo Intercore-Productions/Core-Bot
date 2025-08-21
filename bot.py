@@ -8,6 +8,7 @@ import json
 import os
 import asyncio
 import aiohttp
+import wavelink
 from dotenv import load_dotenv
 from discord import ui, TextChannel, Embed
 from typing import Optional, List, Dict
