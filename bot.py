@@ -3226,6 +3226,13 @@ async def on_ready():
    
     await bot.tree.sync()
 
+    await wavelink.NodePool.create_node(
+    bot=bot,
+    host='127.0.0.1',
+    port=5001,
+    password='CoreBot25'
+    )
+
     await wavelink.Pool.connect(
         client=bot,
         nodes=[
