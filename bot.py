@@ -3244,6 +3244,19 @@ async def on_ready():
         print(f"Synced {len(synced)} commands")
     except Exception as e:
         print(f"Error syncing commands: {e}")
+   
+    await bot.tree.sync()
+
+    await wavelink.Pool.connect(
+        client=bot,
+        nodes=[
+            wavelink.Node(
+                uri='http://localhost:2333',
+                password='youshallnotpass'
+            )
+        ]
+    )
+
 
 token = os.getenv("TOKEN")
 bot.run(token)
