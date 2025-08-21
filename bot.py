@@ -821,7 +821,6 @@ async def game_bans(interaction: discord.Interaction):
         except Exception as e:
             await interaction.followup.send(f"❌ Request failed: {e}")
 
-=======
 # /suggest
 from discord import Embed
 from discord.ext import commands
