@@ -856,31 +856,9 @@ async def suggest(interaction: discord.Interaction, title: str, suggestion: str)
         await msg.add_reaction(emoji)
     await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
 
-import discord
-from discord import app_commands
-from discord.ext import commands
 import wavelink
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
 queues = {}
-
-@bot.event
-async def on_ready():
-    print(f"Bot is online as {bot.user}")
-
-    await bot.tree.sync()
-
-    await wavelink.Pool.connect(
-        client=bot,
-        nodes=[
-            wavelink.Node(
-                uri='http://localhost:2333',
-                password='youshallnotpass'
-            )
-        ]
-    )
 
 async def get_player(interaction: discord.Interaction) -> wavelink.Player:
     if not interaction.guild:
