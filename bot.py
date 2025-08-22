@@ -3223,6 +3223,7 @@ import discord
 from discord.ext import commands
 import wavelink
 import asyncio
+import os
 
 @bot.event
 async def on_ready():
@@ -3249,13 +3250,21 @@ async def on_ready():
     except Exception as e:
         print(f"Failed to connect to Lavalink: {e}")
 
-@bot.event
-async def on_shutdown():
+async def shutdown():
     print("Shutting down bot... Closing Lavalink and sessions.")
     await wavelink.Pool.disconnect()
     await bot.close()
 
-token = os.getenv("TOKEN")
-bot.run(token)
+async def main():
+    token = os.getenv("TOKEN")
+    async with bot:
+        try:
+            await bot.start(token)
+        except KeyboardInterrupt:
+            await shutdown()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
 
 # END          real
