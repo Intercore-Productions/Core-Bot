@@ -3241,8 +3241,8 @@ async def on_ready():
             client=bot,
             nodes=[
                 wavelink.Node(
-                    uri='http://localhost:5001',
-                    password='CoreBot25'
+                    uri="http://localhost:5001",
+                    password="CoreBot25"
                 )
             ]
         )
@@ -3251,20 +3251,28 @@ async def on_ready():
         print(f"Failed to connect to Lavalink: {e}")
 
 async def shutdown():
-    print("Shutting down bot... Closing Lavalink and sessions.")
+    print("Shutting down the bot... Closing Lavalink and HTTP sessions.")
     await wavelink.Pool.disconnect()
     await bot.close()
 
 async def main():
     token = os.getenv("TOKEN")
-    async with bot:
-        try:
+
+    try:
+        async with bot:
             await bot.start(token)
-        except KeyboardInterrupt:
-            await shutdown()
+    except KeyboardInterrupt:
+        print("🔴 KeyboardInterrupt received. Shutting down...")
+        await shutdown()
+    except asyncio.CancelledError:
+        print("🟡 CancelledError during shutdown (safe to ignore).")
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        await shutdown()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 # END          real
