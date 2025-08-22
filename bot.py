@@ -3230,13 +3230,15 @@ async def on_ready():
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
-    await wavelink.NodePool.create_node(
-        bot=bot,
-        host='127.0.0.1', 
-        port=5001,
-        password='CoreBot25'
+    await wavelink.Pool.connect(
+        client=bot,
+        nodes=[
+            wavelink.Node(
+                uri='http://localhost:5001',
+                password='CoreBot25'
+            )
+        ]
     )
-
 
 
 token = os.getenv("TOKEN")
