@@ -786,6 +786,142 @@ async def send_panel(interaction: Interaction, channel: TextChannel):
     await channel.send(embed=embed, view=view)
     await interaction.response.send_message(f"Support panel sent in {channel.mention}", ephemeral=True)
 
+# Roblox Ranking System
+from discord.ext import commands
+from discord import app_commands, Interaction, Embed, SelectOption, ui
+import discord
+import json
+import requests
+
+config_sessions = {}
+
+class GroupIDModal(ui.Modal, title="Enter Roblox Group ID"):
+    group_id = ui.TextInput(label="Group ID", placeholder="Example: 1234567", required=True)
+
+    async def on_submit(self, interaction: Interaction):
+        session = config_sessions.get(interaction.user.id)
+        session["group_id"] = int(self.group_id.value)
+
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Step 2: Set Minimum Rank",
+                description=(
+                    "**Minimum Rank** is the lowest rank value allowed to use ranking commands.\n\n"
+                    "You can find it in your group roles by checking the 'Rank' number.\n"
+                    "Example: if a role shows `Rank: 150`, set this as your min rank."
+                ),
+                color=discord.Color.orange()
+            ),
+            ephemeral=True
+        )
+        await interaction.followup.send_modal(MinRankModal())
+
+class MinRankModal(ui.Modal, title="Enter Minimum Rank"):
+    min_rank = ui.TextInput(label="Minimum Rank", placeholder="Example: 150", required=True)
+
+    async def on_submit(self, interaction: Interaction):
+        session = config_sessions.get(interaction.user.id)
+        session["min_rank"] = int(self.min_rank.value)
+
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Step 3: Select Linked Roles",
+                description="Choose the Discord roles to assign to linked users.",
+                color=discord.Color.blurple()
+            ),
+            view=RoleSelectView(interaction.guild.roles, "linked_roles", interaction.user.id),
+            ephemeral=True
+        )
+
+class RoleSelectView(ui.View):
+    def __init__(self, roles, field_name, user_id):
+        super().__init__(timeout=300)
+        options = [
+            SelectOption(label=role.name, value=str(role.id))
+            for role in roles if not role.is_default()
+        ]
+        self.add_item(RoleSelect(options, field_name, user_id))
+
+class RoleSelect(ui.Select):
+    def __init__(self, options, field_name, user_id):
+        super().__init__(
+            placeholder="Select one or more roles...",
+            min_values=0,
+            max_values=len(options),
+            options=options
+        )
+        self.field_name = field_name
+        self.user_id = user_id
+
+    async def callback(self, interaction: Interaction):
+        session = config_sessions.get(self.user_id)
+        session[self.field_name] = self.values
+
+        if self.field_name == "linked_roles":
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="Step 4: Select Unlinked Roles",
+                    description="These roles will be removed from users when they are unlinked.",
+                    color=discord.Color.red()
+                ),
+                view=RoleSelectView(interaction.guild.roles, "unlinked_roles", self.user_id),
+                ephemeral=True
+            )
+        else:
+            await save_roblox_config(interaction, session)
+            await interaction.followup.send("✅ Roblox configuration saved successfully.", ephemeral=True)
+
+async def save_roblox_config(interaction: Interaction, session):
+    guild_id = str(interaction.guild.id)
+    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
+    existing = requests.get(url, headers=SUPABASE_HEADERS).json()
+
+    payload = {
+        "group_id": session["group_id"],
+        "min_rank": session["min_rank"],
+        "linked_roles": json.dumps(session.get("linked_roles", [])),
+        "unlinked_roles": json.dumps(session.get("unlinked_roles", [])),
+    }
+
+    if existing:
+        requests.patch(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+    else:
+        payload["guild_id"] = guild_id
+        requests.post(f"{SUPABASE_URL}/rest/v1/server_config", headers=SUPABASE_HEADERS, data=json.dumps(payload))
+
+    config_sessions.pop(interaction.user.id, None)
+
+@bot.tree.command(name="roblox-config", description="Set up Roblox group configuration for this server.")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def roblox_config(interaction: Interaction):
+    config = load_config(interaction.guild.id)
+    if config is None:
+        await interaction.response.send_message(
+            "❌ This server is not configured yet. Use `/config` first.",
+            ephemeral=True
+        )
+        return
+
+    config_sessions[interaction.user.id] = {
+        "guild_id": str(interaction.guild.id)
+    }
+
+    embed = Embed(
+        title="Step 1: Enter Roblox Group ID",
+        description=(
+            "🔹 Visit [https://www.roblox.com/groups](https://www.roblox.com/groups)\n"
+            "🔹 Open your group page, for example:\n"
+            "`https://www.roblox.com/groups/1234567/GroupName`\n"
+            "➡️ In that case, your Group ID is `1234567`.\n\n"
+            "Please enter the Group ID in the popup form."
+        ),
+        color=discord.Color.green()
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send_modal(GroupIDModal())
+
+# /game-bans
 API_URL = "https://maple-api.marizma.games/v1/server/bans"
 
 @app_commands.command(name="game-bans", description="Retrieve the list of game server bans.")
