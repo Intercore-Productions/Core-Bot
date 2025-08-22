@@ -3219,6 +3219,11 @@ async def invite(interaction: discord.Interaction, guild_id: str):
 
 
 # Start
+import discord
+from discord.ext import commands
+import wavelink
+import asyncio
+
 @bot.event
 async def on_ready():
     print(f"Bot is logged in as {bot.user.name} ({bot.user.id})")
@@ -3230,16 +3235,25 @@ async def on_ready():
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
-    await wavelink.Pool.connect(
-        client=bot,
-        nodes=[
-            wavelink.Node(
-                uri='http://localhost:5001',
-                password='CoreBot25'
-            )
-        ]
-    )
+    try:
+        await wavelink.Pool.connect(
+            client=bot,
+            nodes=[
+                wavelink.Node(
+                    uri='http://localhost:5001',
+                    password='CoreBot25'
+                )
+            ]
+        )
+        print("Connected to Lavalink.")
+    except Exception as e:
+        print(f"Failed to connect to Lavalink: {e}")
 
+@bot.event
+async def on_shutdown():
+    print("Shutting down bot... Closing Lavalink and sessions.")
+    await wavelink.Pool.disconnect()
+    await bot.close()
 
 token = os.getenv("TOKEN")
 bot.run(token)
