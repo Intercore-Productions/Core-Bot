@@ -787,139 +787,142 @@ async def send_panel(interaction: Interaction, channel: TextChannel):
     await interaction.response.send_message(f"Support panel sent in {channel.mention}", ephemeral=True)
 
 # Roblox Ranking System
-from discord.ext import commands
-from discord import app_commands, Interaction, Embed, SelectOption, ui
-import discord
 import json
 import requests
 
-config_sessions = {}
-
-class GroupIDModal(ui.Modal, title="Enter Roblox Group ID"):
-    group_id = ui.TextInput(label="Group ID", placeholder="Example: 1234567", required=True)
-
-    async def on_submit(self, interaction: Interaction):
-        session = config_sessions.get(interaction.user.id)
-        session["group_id"] = int(self.group_id.value)
-
-        await interaction.response.send_message(
-            embed=Embed(
-                title="Step 2: Set Minimum Rank",
-                description=(
-                    "**Minimum Rank** is the lowest rank value allowed to use ranking commands.\n\n"
-                    "You can find it in your group roles by checking the 'Rank' number.\n"
-                    "Example: if a role shows `Rank: 150`, set this as your min rank."
-                ),
-                color=discord.Color.orange()
-            ),
-            ephemeral=True
-        )
-        await interaction.followup.send_modal(MinRankModal())
-
-class MinRankModal(ui.Modal, title="Enter Minimum Rank"):
-    min_rank = ui.TextInput(label="Minimum Rank", placeholder="Example: 150", required=True)
-
-    async def on_submit(self, interaction: Interaction):
-        session = config_sessions.get(interaction.user.id)
-        session["min_rank"] = int(self.min_rank.value)
-
-        await interaction.response.send_message(
-            embed=Embed(
-                title="Step 3: Select Linked Roles",
-                description="Choose the Discord roles to assign to linked users.",
-                color=discord.Color.blurple()
-            ),
-            view=RoleSelectView(interaction.guild.roles, "linked_roles", interaction.user.id),
-            ephemeral=True
-        )
-
-class RoleSelectView(ui.View):
-    def __init__(self, roles, field_name, user_id):
-        super().__init__(timeout=300)
-        options = [
-            SelectOption(label=role.name, value=str(role.id))
-            for role in roles if not role.is_default()
-        ]
-        self.add_item(RoleSelect(options, field_name, user_id))
-
-class RoleSelect(ui.Select):
-    def __init__(self, options, field_name, user_id):
-        super().__init__(
-            placeholder="Select one or more roles...",
-            min_values=0,
-            max_values=len(options),
-            options=options
-        )
-        self.field_name = field_name
-        self.user_id = user_id
-
-    async def callback(self, interaction: Interaction):
-        session = config_sessions.get(self.user_id)
-        session[self.field_name] = self.values
-
-        if self.field_name == "linked_roles":
-            await interaction.response.send_message(
-                embed=Embed(
-                    title="Step 4: Select Unlinked Roles",
-                    description="These roles will be removed from users when they are unlinked.",
-                    color=discord.Color.red()
-                ),
-                view=RoleSelectView(interaction.guild.roles, "unlinked_roles", self.user_id),
-                ephemeral=True
-            )
-        else:
-            await save_roblox_config(interaction, session)
-            await interaction.followup.send("✅ Roblox configuration saved successfully.", ephemeral=True)
-
-async def save_roblox_config(interaction: Interaction, session):
-    guild_id = str(interaction.guild.id)
-    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
-    existing = requests.get(url, headers=SUPABASE_HEADERS).json()
-
+async def save_roblox_config(group_id, min_rank, linked_roles_ids, unlinked_roles_ids):
     payload = {
-        "group_id": session["group_id"],
-        "min_rank": session["min_rank"],
-        "linked_roles": json.dumps(session.get("linked_roles", [])),
-        "unlinked_roles": json.dumps(session.get("unlinked_roles", [])),
+        "group_id": int(group_id),
+        "min_rank": int(min_rank),
+        "linked_roles": json.dumps(linked_roles_ids),
+        "unlinked_roles": json.dumps(unlinked_roles_ids)
     }
 
-    if existing:
-        requests.patch(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
-    else:
-        payload["guild_id"] = guild_id
-        requests.post(f"{SUPABASE_URL}/rest/v1/server_config", headers=SUPABASE_HEADERS, data=json.dumps(payload))
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
+    response = requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+    return response.status_code in (200, 201)
 
-    config_sessions.pop(interaction.user.id, None)
 
-@bot.tree.command(name="roblox-config", description="Set up Roblox group configuration for this server.")
+@bot.tree.command(name="roblox-config")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def roblox_config(interaction: Interaction):
-    config = load_config(interaction.guild.id)
-    if config is None:
-        await interaction.response.send_message(
-            "❌ This server is not configured yet. Use `/config` first.",
-            ephemeral=True
-        )
+    await interaction.response.send_message(
+        "Step 1: Enter the Roblox Group ID.\n\n"
+        "🔗 Visit https://www.roblox.com/groups and open your group page.\n"
+        "Example URL:\nhttps://www.roblox.com/groups/1234567/GroupName\n"
+        "➡️ Your Group ID is the number in the URL (e.g. 1234567).",
+        ephemeral=False
+    )
+    bot_msg = await interaction.original_response()
+
+    def check(m):
+        return m.author == interaction.user and m.channel == interaction.channel
+
+    try:
+        user_msg = await bot.wait_for('message', check=check, timeout=300)
+    except asyncio.TimeoutError:
+        await interaction.followup.send("⌛ Timeout: You took too long to respond. Please try again.", ephemeral=True)
+        await bot_msg.delete()
         return
 
-    config_sessions[interaction.user.id] = {
-        "guild_id": str(interaction.guild.id)
-    }
+    group_id = user_msg.content.strip()
+    if not group_id.isdigit():
+        await interaction.followup.send("❌ Invalid Group ID. It must be a number. Please run the command again.", ephemeral=True)
+        await bot_msg.delete()
+        await user_msg.delete()
+        return
 
-    embed = Embed(
-        title="Step 1: Enter Roblox Group ID",
-        description=(
-            "🔹 Visit [https://www.roblox.com/groups](https://www.roblox.com/groups)\n"
-            "🔹 Open your group page, for example:\n"
-            "`https://www.roblox.com/groups/1234567/GroupName`\n"
-            "➡️ In that case, your Group ID is `1234567`.\n\n"
-            "Please enter the Group ID in the popup form."
-        ),
-        color=discord.Color.green()
+    await bot_msg.delete()
+    await user_msg.delete()
+
+    await interaction.followup.send(
+        "Step 2: Enter the minimum rank code required to rank others.\n"
+        "This is the Roblox rank number (usually an integer).",
+        ephemeral=False
     )
+    bot_msg = await interaction.original_response()
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-    await interaction.followup.send_modal(GroupIDModal())
+    try:
+        user_msg = await bot.wait_for('message', check=check, timeout=240)
+    except asyncio.TimeoutError:
+        await interaction.followup.send("⌛ Timeout: You took too long to respond. Please try again.", ephemeral=True)
+        await bot_msg.delete()
+        return
+
+    min_rank = user_msg.content.strip()
+    if not min_rank.isdigit():
+        await interaction.followup.send("❌ Invalid rank code. It must be a number. Please run the command again.", ephemeral=True)
+        await bot_msg.delete()
+        await user_msg.delete()
+        return
+
+    await bot_msg.delete()
+    await user_msg.delete()
+
+    await interaction.followup.send(
+        "Step 3: Mention the roles to assign when the user is linked (separate multiple roles by space).\n"
+        "Example: @Role1 @Role2",
+        ephemeral=False
+    )
+    bot_msg = await interaction.original_response()
+
+    try:
+        user_msg = await bot.wait_for('message', check=check, timeout=180)
+    except asyncio.TimeoutError:
+        await interaction.followup.send("⌛ Timeout: You took too long to respond. Please try again.", ephemeral=True)
+        await bot_msg.delete()
+        return
+
+    linked_roles = user_msg.role_mentions
+    if not linked_roles:
+        await interaction.followup.send("❌ You must mention at least one role. Please run the command again.", ephemeral=True)
+        await bot_msg.delete()
+        await user_msg.delete()
+        return
+
+    await bot_msg.delete()
+    await user_msg.delete()
+
+    await interaction.followup.send(
+        "Step 4: Mention the roles to assign when the user is unlinked (separate multiple roles by space).\n"
+        "Example: @Role1 @Role2",
+        ephemeral=False
+    )
+    bot_msg = await interaction.original_response()
+
+    try:
+        user_msg = await bot.wait_for('message', check=check, timeout=180)
+    except asyncio.TimeoutError:
+        await interaction.followup.send("⌛ Timeout: You took too long to respond. Please try again.", ephemeral=True)
+        await bot_msg.delete()
+        return
+
+    unlinked_roles = user_msg.role_mentions
+    if not unlinked_roles:
+        await interaction.followup.send("❌ You must mention at least one role. Please run the command again.", ephemeral=True)
+        await bot_msg.delete()
+        await user_msg.delete()
+        return
+
+    await bot_msg.delete()
+    await user_msg.delete()
+
+    linked_roles_ids = [role.id for role in linked_roles]
+    unlinked_roles_ids = [role.id for role in unlinked_roles]
+
+    saved = await save_roblox_config(interaction.guild.id, group_id, min_rank, linked_roles_ids, unlinked_roles_ids)
+
+    if saved:
+        await interaction.followup.send(
+            f"✅ Configuration saved:\n"
+            f"- Group ID: {group_id}\n"
+            f"- Minimum Rank Code: {min_rank}\n"
+            f"- Linked Roles: {', '.join(role.name for role in linked_roles)}\n"
+            f"- Unlinked Roles: {', '.join(role.name for role in unlinked_roles)}",
+            ephemeral=True
+        )
+    else:
+        await interaction.followup.send("❌ Failed to save configuration to database. Please try again later.", ephemeral=True)
 
 # /game-bans
 API_URL = "https://maple-api.marizma.games/v1/server/bans"
