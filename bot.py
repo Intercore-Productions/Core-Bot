@@ -925,17 +925,17 @@ async def link(self, interaction: discord.Interaction):
             "used": False
         }).execute()
 
-      embed = discord.Embed(
-          title="🔗 Roblox Verification",
-          description=(
+        embed = discord.Embed(
+            title="🔗 Roblox Verification",
+            description=(
               f"To verify your Roblox account, please join the game below and enter the following code:\n\n"
               f"**`{code}`**\n\n"
               "[Join the Roblox game](https://www.roblox.com/games/1234567890/Verification-Game)"
-          ),
+              ),
            color=discord.Color.blue()
-     )
+         )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Verification(bot))
