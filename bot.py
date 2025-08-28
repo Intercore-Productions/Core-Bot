@@ -909,43 +909,6 @@ def generate_code():
         part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         parts.append(part)
     return '-'.join(parts)
-    
-# /game-bans
-API_URL = "https://maple-api.marizma.games/v1/server/bans"
-
-@bot.tree.command(name="game-bans", description="Retrieve the list of game server bans.")
-@has_premium_server()
-async def game_bans(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message("You don’t have permission to use this command.", ephemeral=True)
-        return
-
-    await interaction.response.defer()  # Defer to avoid timeout
-
-    headers = {
-        "X-Api-Key": "api_key",
-        "Accept": "application/json"
-    }
-
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(API_URL, headers=headers) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    bans = data.get("data", {}).get("Bans", [])
-                    if bans:
-                        bans_list = "\n".join(str(ban) for ban in bans)
-                        await interaction.followup.send(f"🚫 **Bans List:**\n```\n{bans_list}\n```")
-                    else:
-                        await interaction.followup.send("✅ No bans found on the server.")
-                elif resp.status == 401:
-                    await interaction.followup.send("❌ Unauthorized. Check your API key.")
-                elif resp.status == 429:
-                    await interaction.followup.send("⚠️ Rate limit exceeded. Please try again later.")
-                else:
-                    await interaction.followup.send("❌ An unexpected error occurred.")
-        except Exception as e:
-            await interaction.followup.send(f"❌ Request failed: {e}")
 
 # /suggest
 from discord import Embed
