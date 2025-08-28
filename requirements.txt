@@ -4,3 +4,5 @@ psutil
 python-dotenv
 yt-dlp
 pynacl
+Flask>=2.0.0
+supabase>=1.0.3
