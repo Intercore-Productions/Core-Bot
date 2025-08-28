@@ -900,6 +900,78 @@ async def roblox_config(interaction: Interaction):
     except:
         pass
 
+import discord
+from discord import app_commands
+from flask import Flask, request, jsonify
+from threading import Thread
+import asyncio
+from supabase import create_client
+
+supabase = create_client(SUPABASE_URL, SUPABASE_API_KEY)
+
+bot: discord.Client  
+
+@bot.tree.command(name="link", description="Link your Discord account to your Roblox account.")
+async def link_command(interaction: discord.Interaction):
+    discord_id = interaction.user.id
+    link = f"https://core-verification-site.vercel.app/link?discord_id={discord_id}"
+    await interaction.response.send_message(
+        f"Click the link below to verify your Roblox account:\n{link}",
+        ephemeral=True
+    )
+
+app = Flask(__name__)
+
+@app.route('/verify', methods=['POST'])
+def verify():
+    data = request.json
+    discord_id = int(data['discord_id'])
+    roblox_id = data['roblox_username']  
+
+    asyncio.run_coroutine_threadsafe(
+        send_verification_embed(discord_id, roblox_id),
+        bot.loop
+    )
+
+    return jsonify({"status": "ok"}), 200
+
+async def send_verification_embed(discord_id, roblox_id):
+    user = await bot.fetch_user(discord_id)
+
+    class ConfirmView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=60)
+
+        @discord.ui.button(label="✅ Confirm", style=discord.ButtonStyle.success)
+        async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+            supabase.table("roblox_verification").insert({
+                "discord_id": str(discord_id),
+                "roblox_id": roblox_id
+            }).execute()
+
+            await interaction.response.edit_message(
+                content="✅ Your accounts have been successfully linked!",
+                view=None
+            )
+
+        @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.danger)
+        async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+            await interaction.response.edit_message(
+                content="❌ Linking cancelled.",
+                view=None
+            )
+
+    view = ConfirmView()
+    await user.send(
+        f"Do you want to link your Discord account with **{roblox_id}**?",
+        view=view
+    )
+    
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
+
+Thread(target=run_flask).start()
+
 # /game-bans
 API_URL = "https://maple-api.marizma.games/v1/server/bans"
 
