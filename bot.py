@@ -937,9 +937,6 @@ async def link(self, interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-async def setup(bot):
-    await bot.add_cog(Verification(bot))
-
 # /game-bans
 API_URL = "https://maple-api.marizma.games/v1/server/bans"
 
