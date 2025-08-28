@@ -914,30 +914,26 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-class Verification(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-    @bot.tree.command(name="link", description="Link your Roblox account to your Discord")
-    async def link(self, interaction: discord.Interaction):
-        discord_id = str(interaction.user.id)
-        code = generate_code()
-
-        supabase.table("roblox_verification").upsert({
+@bot.tree.command(name="link", description="Link your Roblox account to your Discord")
+async def link(self, interaction: discord.Interaction):
+    discord_id = str(interaction.user.id)
+    code = generate_code()
+    
+    supabase.table("roblox_verification").upsert({
             "discord_id": discord_id,
             "verification_code": code,
             "used": False
         }).execute()
 
-        embed = discord.Embed(
-            title="🔗 Roblox Verification",
-            description=(
-                f"To verify your Roblox account, please join the game below and enter the following code:\n\n"
-                f"**`{code}`**\n\n"
-                "[Join the Roblox game](https://www.roblox.com/games/1234567890/Verification-Game)"
-            ),
-            color=discord.Color.blue()
-        )
+      embed = discord.Embed(
+          title="🔗 Roblox Verification",
+          description=(
+              f"To verify your Roblox account, please join the game below and enter the following code:\n\n"
+              f"**`{code}`**\n\n"
+              "[Join the Roblox game](https://www.roblox.com/games/1234567890/Verification-Game)"
+          ),
+           color=discord.Color.blue()
+     )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -947,7 +943,7 @@ async def setup(bot):
 # /game-bans
 API_URL = "https://maple-api.marizma.games/v1/server/bans"
 
-@app_commands.command(name="game-bans", description="Retrieve the list of game server bans.")
+@bot.tree.command(name="game-bans", description="Retrieve the list of game server bans.")
 @has_premium_server()
 async def game_bans(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_messages:
