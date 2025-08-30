@@ -919,7 +919,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-def parse_duration(duration_str: str) -> int
+def parse_duration(duration_str: str) -> int:
     match = re.match(r"(\d+)([mhdw])", duration_str.lower())
     if not match:
         return None
