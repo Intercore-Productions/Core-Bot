@@ -912,8 +912,12 @@ def generate_code():
     return '-'.join(parts)
 
 # /giveaway
-import re
+import discord
+from discord.ext import commands
+from discord import app_commands
+import asyncio
 import random
+import re
 
 intents = discord.Intents.default()
 intents.message_content = True
