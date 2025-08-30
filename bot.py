@@ -1155,55 +1155,74 @@ async def music_cpu(interaction: discord.Interaction):
 # /game-bans
 BANS_URL = 'https://maple-api.marizma.games/v1/server/bans'
 
-@bot.tree.command(name="game-bans", description="Retrieve the list of game server bans.")
-@has_premium_server()
-async def game_bans(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message("❌ You don’t have permission to use this command.", ephemeral=True)
+@bot.tree.command(name="game-ban", description="Ban or unban a player from the game server")
+@app_commands.describe(user="Username of the player to ban/unban", banned="Ban = True / Unban = False", reason="Reason for the action")
+async def game_ban(interaction: discord.Interaction, user: str, banned: bool, reason: str = None):
+    config = load_config(interaction.guild.id)
+    dev_id = 1044899567822454846
+    is_dev = interaction.user.id == dev_id
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured.", ephemeral=True)
         return
 
-    config = load_config(interaction.guild.id)
-    if not config:
-        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
-        return
+    if not is_dev:
+        ingame_role_id = config.get("ingame_perms")
+        if not ingame_role_id or not any(str(role.id) == str(ingame_role_id) for role in interaction.user.roles):
+            await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+            return
 
     await interaction.response.defer(thinking=True)
 
+    user_id = username_to_userid(user)
+    if not user_id:
+        await interaction.followup.send("❌ User not found. Please check the username.", ephemeral=True)
+        return
+
+    body = {
+        "UserId": user_id,
+        "BanStatus": banned
+    }
+    if reason:
+        body["ModerationReason"] = reason
+
     headers = {
-        "X-Api-Key": config["api_key"],
-        "Accept": "application/json"
+        "X-Api-Key": config.get("api_key"),
+        "Content-Type": "application/json"
     }
 
     try:
-        response = requests.get(BANS_URL, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            bans = data.get("data", {}).get("Bans", [])
-            if not bans:
-                await interaction.followup.send("✅ No bans found on the server.")
-                return
-                
-            usernames = {}
-            for uid in bans:
-                try:
-                    roblox_response = requests.get(f"https://users.roblox.com/v1/users/{uid}")
-                    if roblox_response.status_code == 200:
-                        usernames[uid] = roblox_response.json().get("name", f"Unknown ({uid})")
-                    else:
-                        usernames[uid] = f"Unknown ({uid})"
-                except Exception:
-                    usernames[uid] = f"Unknown ({uid})"
+        resp = requests.post(
+            "https://maple-api.marizma.games/v1/server/banplayer",
+            headers=headers,
+            data=json.dumps(body)
+        )
+        if resp.status_code == 200:
+            embed = discord.Embed(
+                title="🔨 Game Ban" if banned else "✅ Game Unban",
+                color=discord.Color.red() if banned else discord.Color.green()
+            )
+            embed.add_field(name="User ID", value=str(user_id), inline=False)
+            embed.add_field(name="Username", value=user, inline=False)
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
+            embed.add_field(name="Action", value="Ban" if banned else "Unban", inline=False)
+            if reason:
+                embed.add_field(name="Reason", value=reason, inline=False)
+            embed.timestamp = discord.utils.utcnow()
 
-            bans_list = "\n".join(f"{usernames[uid]} ({uid})" for uid in bans)
-            await interaction.followup.send(f"🚫 **Bans List:**\n```\n{bans_list}\n```")
-        elif response.status_code == 401:
-            await interaction.followup.send("❌ Unauthorized. Please check your API key.")
-        elif response.status_code == 429:
-            await interaction.followup.send("⚠️ Rate limit exceeded. Please try again later.")
+            if not is_dev:
+                log_channel = interaction.guild.get_channel(config["logs_channel"])
+                if log_channel:
+                    await log_channel.send(embed=embed)
+                try:
+                    await interaction.user.send(embed=embed)
+                except Exception:
+                    pass
+            await interaction.followup.send("✅ Ban status updated.")
         else:
-            await interaction.followup.send(f"❌ Failed to fetch bans. Status: {response.status_code}\n{response.text}")
+            await interaction.followup.send(f"❌ API Error {resp.status_code}: {resp.text}", ephemeral=True)
+
     except Exception as e:
-        await interaction.followup.send(f"❌ An unexpected error occurred: {e}")
+        await interaction.followup.send(f"❌ Error while updating ban: {e}",
 
 # /game-queue
 @bot.tree.command(name="game-queue", description="Show the current server queue.")
