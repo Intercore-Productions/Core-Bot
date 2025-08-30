@@ -815,6 +815,7 @@ async def update_roblox_config(guild_id: int, group_id: int, min_rank: int, link
     return response.status_code in [200, 204]
 
 @bot.tree.command(name="roblox-config", description="Configure Roblox ranking settings for your server.")
+@has_premium_server()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def roblox_config(interaction: Interaction):
     guild_id = interaction.guild.id
@@ -909,6 +910,70 @@ def generate_code():
         part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         parts.append(part)
     return '-'.join(parts)
+
+# /giveaway
+import re
+import random
+
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+def parse_duration(duration_str: str) -> int
+    match = re.match(r"(\d+)([mhdw])", duration_str.lower())
+    if not match:
+        return None
+
+    value, unit = int(match.group(1)), match.group(2)
+
+    if unit == "m":  
+        return value * 60
+    elif unit == "h":  
+        return value * 60 * 60
+    elif unit == "d":  
+        return value * 60 * 60 * 24
+    elif unit == "w":  
+        return value * 60 * 60 * 24 * 7
+
+    return None
+
+@bot.tree.command(name="giveaway", description="Start a giveaway")
+@app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
+@has_premium_server()
+async def giveaway(interaction: discord.Interaction, duration: str, winners: int, prize: str):
+    seconds = parse_duration(duration)
+    if seconds is None:
+        return await interaction.response.send_message("❌ Invalid duration format! Use `10m`, `2h`, `1d`, `1w`.", ephemeral=True)
+
+    embed = discord.Embed(
+        title="🎉 Giveaway 🎉",
+        description=f"**Prize:** {prize}\nReact with 🎉 to enter!\n\n⏳ Ends in `{duration}`\n👑 Winners: {winners}",
+        color=discord.Color.blurple()
+    )
+    embed.set_footer(text=f"Hosted by {interaction.user}")
+    msg = await interaction.channel.send(embed=embed)
+    await msg.add_reaction("🎉")
+
+    await interaction.response.send_message("✅ Giveaway started!", ephemeral=True)
+
+    await asyncio.sleep(seconds)
+
+    new_msg = await interaction.channel.fetch_message(msg.id)
+    users = await new_msg.reactions[0].users().flatten()
+    users = [u for u in users if not u.bot]
+
+    if len(users) == 0:
+        return await interaction.channel.send("❌ No one entered the giveaway.")
+
+    winners_list = random.sample(users, min(len(users), winners))
+    winners_mentions = ", ".join(w.mention for w in winners_list)
+
+    end_embed = discord.Embed(
+        title="🎉 Giveaway Ended 🎉",
+        description=f"**Prize:** {prize}\n👑 Winners: {winners_mentions}",
+        color=discord.Color.green()
+    )
+    await interaction.channel.send(embed=end_embed)
 
 # /suggest
 from discord import Embed
