@@ -1222,7 +1222,7 @@ async def game_ban(interaction: discord.Interaction, user: str, banned: bool, re
             await interaction.followup.send(f"❌ API Error {resp.status_code}: {resp.text}", ephemeral=True)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Error while updating ban: {e}",
+        await interaction.followup.send(f"❌ Error while updating ban: {e}"),
 
 # /game-queue
 @bot.tree.command(name="game-queue", description="Show the current server queue.")
