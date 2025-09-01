@@ -168,8 +168,12 @@ def build_ticket_log_embed(opener, closer, creation_time, claimed_by, panel_titl
 
 # /ticket-config
 @bot.tree.command(name="ticket-config", description="Configure ticket panels for this server")
+@has_premium_server()
 async def ticket_config(interaction: discord.Interaction):
+    # Log user and permissions
+    print(f"[TICKET] ticket-config called by {interaction.user} (ID: {interaction.user.id})")
     if not interaction.user.guild_permissions.administrator:
+        print(f"[TICKET][PERM] User {interaction.user} lacks administrator permissions.")
         await interaction.response.send_message("❌ Only the Administrator can configure Tickets", ephemeral=True)
         return
 
@@ -620,7 +624,6 @@ class DenyCloseButton(discord.ui.Button):
         self.parent_view.value = False
         self.parent_view.stop()
         await interaction.response.send_message("Ticket closure denied.", ephemeral=True)
-
 # /claim
 @bot.tree.command(name="claim", description="Claim this ticket")
 @is_ticket_channel()
@@ -1739,25 +1742,6 @@ async def active_players(interaction: discord.Interaction):
 @bot.tree.command(name="hello", description="Say hi to the bot!")
 async def hello(interaction: discord.Interaction):
     await interaction.response.send_message("👋 Hello!")
-
-@bot.event
-async def on_ready():
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="🔧 Bot in development"))
-    print(f"✅ Bot is online as {bot.user}")
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ Synced {len(synced)} slash command(s).")
-    except Exception as e:
-        print(f"❌ Error syncing commands: {e}")
-
-async def send_modlog_and_dm(user: discord.Member, embed: discord.Embed, log_channel_id: int, guild: discord.Guild):
-    try:
-        await user.send(embed=embed)
-    except Exception:
-        pass
-    log_channel = guild.get_channel(log_channel_id)
-    if log_channel:
-        await log_channel.send(embed=embed)
 
 # --- MODERATION COMMANDS ---
 
@@ -3393,12 +3377,18 @@ async def on_ready():
     print(f"Bot is logged in as {bot.user.name} ({bot.user.id})")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="🏥 Maple Communities"))
 
+    # Sync commands and detailed logs
     try:
         synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} commands")
+        print(f"[SYNC] Synced {len(synced)} commands: {[cmd.name for cmd in synced]}")
     except Exception as e:
-        print(f"Error syncing commands: {e}")
+        print(f"[SYNC][ERROR] Error syncing commands: {e}")
 
+    # Log ticket commands
+    ticket_cmds = [cmd for cmd in bot.tree.get_commands() if 'ticket' in cmd.name]
+    print(f"[TICKET] Registered ticket commands: {[cmd.name for cmd in ticket_cmds]}")
+
+    # Connect to Lavalink with detailed logs
     try:
         await wavelink.Pool.connect(
             client=bot,
@@ -3409,9 +3399,9 @@ async def on_ready():
                 )
             ]
         )
-        print("Connected to Lavalink.")
+        print("[LAVALINK] Connected to Lavalink.")
     except Exception as e:
-        print(f"Failed to connect to Lavalink: {e}")
+        print(f"[LAVALINK][ERROR] Failed to connect to Lavalink: {e}")
 
 async def shutdown():
     print("Shutting down the bot... Closing Lavalink and HTTP sessions.")
