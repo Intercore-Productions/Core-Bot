@@ -93,6 +93,21 @@ async def save_config_to_db(interaction, session_id):
     config_sessions.pop(session_id, None)
     await interaction.response.send_message("✅ Configuration saved.", ephemeral=True)
 
+import psutil
+
+def get_cpu_usage():
+    """Returns the current CPU usage percentage."""
+    return psutil.cpu_percent(interval=1)
+
+async def send_modlog_and_dm(user, embed, logs_channel_id, guild):
+    channel = guild.get_channel(int(logs_channel_id))
+    if channel:
+        await channel.send(embed=embed)
+    try:
+        await user.send(embed=embed)
+    except Exception:
+        pass
+
 from functools import wraps
 import requests
 
@@ -1737,6 +1752,103 @@ async def active_players(interaction: discord.Interaction):
             await interaction.followup.send(f"❌ Failed to fetch active players. Status: {response.status_code}\n{response.text}")
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
+
+from discord.ui import View, Button, Select, Modal, TextInput
+
+class EmbedCreatorView(View):
+    def __init__(self, author_id, premium=False, presets=None):
+        super().__init__(timeout=600)
+        self.embed = discord.Embed(title="", description="", color=discord.Color.blurple())
+        self.author_id = author_id
+        self.premium = premium
+        self.presets = presets or []
+        self.selected_preset = None
+        self.channel_to_send = None
+        self.add_item(Button(label="Title", style=discord.ButtonStyle.primary, custom_id="edit_title"))
+        self.add_item(Button(label="Description", style=discord.ButtonStyle.primary, custom_id="edit_desc"))
+        self.add_item(Button(label="Color", style=discord.ButtonStyle.secondary, custom_id="edit_color"))
+        if premium:
+            self.add_item(Button(label="Save Preset", style=discord.ButtonStyle.success, custom_id="save_preset"))
+            if self.presets:
+                self.add_item(Select(placeholder="Load Preset", options=[discord.SelectOption(label=p['name'], value=str(i)) for i, p in enumerate(self.presets)], custom_id="load_preset"))
+        self.add_item(Button(label="Send", style=discord.ButtonStyle.success, custom_id="send_embed"))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.author_id
+
+    @discord.ui.button(label="Title", style=discord.ButtonStyle.primary, custom_id="edit_title")
+    async def edit_title(self, interaction: discord.Interaction, button: Button):
+        class TitleModal(Modal, title="Edit Title"):
+            title = TextInput(label="Title", max_length=256)
+        modal = TitleModal()
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        self.embed.title = modal.title.value
+        await interaction.edit_original_response(embed=self.embed, view=self)
+
+    @discord.ui.button(label="Description", style=discord.ButtonStyle.primary, custom_id="edit_desc")
+    async def edit_desc(self, interaction: discord.Interaction, button: Button):
+        class DescModal(Modal, title="Edit Description"):
+            desc = TextInput(label="Description", style=discord.TextStyle.paragraph, max_length=2048)
+        modal = DescModal()
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        self.embed.description = modal.desc.value
+        await interaction.edit_original_response(embed=self.embed, view=self)
+
+    @discord.ui.button(label="Color", style=discord.ButtonStyle.secondary, custom_id="edit_color")
+    async def edit_color(self, interaction: discord.Interaction, button: Button):
+        class ColorModal(Modal, title="Edit Color (HEX)"):
+            color = TextInput(label="HEX Color", placeholder="#5865F2", max_length=7)
+        modal = ColorModal()
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        try:
+            self.embed.color = discord.Color(int(modal.color.value.replace('#',''), 16))
+        except Exception:
+            await interaction.followup.send("Invalid color! Use HEX format.", ephemeral=True)
+        await interaction.edit_original_response(embed=self.embed, view=self)
+
+    @discord.ui.button(label="Save Preset", style=discord.ButtonStyle.success, custom_id="save_preset")
+    async def save_preset(self, interaction: discord.Interaction, button: Button):
+        if not self.premium:
+            await interaction.response.send_message("Only Premium users can save presets.", ephemeral=True)
+            return
+        if len(self.presets) >= 25:
+            await interaction.response.send_message("You reached the limit of 25 presets.", ephemeral=True)
+            return
+        self.presets.append({"name": self.embed.title or "Preset", "embed": self.embed.to_dict()})
+        await interaction.response.send_message(f"Preset '{self.embed.title or 'Preset'}' saved!", ephemeral=True)
+
+    @discord.ui.select(placeholder="Load Preset", custom_id="load_preset", options=[])
+    async def load_preset(self, interaction: discord.Interaction, select: Select):
+        idx = int(select.values[0])
+        preset = self.presets[idx]
+        self.embed = discord.Embed.from_dict(preset["embed"])
+        await interaction.edit_original_response(embed=self.embed, view=self)
+
+    @discord.ui.button(label="Send", style=discord.ButtonStyle.success, custom_id="send_embed")
+    async def send_embed(self, interaction: discord.Interaction, button: Button):
+        class ChannelModal(Modal, title="Select Channel"):
+            channel_id = TextInput(label="Channel ID", placeholder="Enter channel ID", max_length=20)
+        modal = ChannelModal()
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        channel_id = int(modal.channel_id.value)
+        channel = interaction.guild.get_channel(channel_id)
+        if not channel or not isinstance(channel, discord.TextChannel):
+            await interaction.followup.send("Invalid channel!", ephemeral=True)
+            return
+        await channel.send(embed=self.embed)
+        await interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
+
+# --- /embed command ---
+@bot.tree.command(name="embed", description="Create a custom embed")
+@has_premium_server()
+async def embed_command(interaction: discord.Interaction):
+    presets = []
+    view = EmbedCreatorView(author_id=interaction.user.id, premium=premium, presets=presets)
+    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view, ephemeral=True)
 
 # /hello (only for test)
 @bot.tree.command(name="hello", description="Say hi to the bot!")
