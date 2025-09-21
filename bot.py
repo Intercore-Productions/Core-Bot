@@ -1008,7 +1008,7 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
         color=discord.Color.blurple()
     )
     embed.set_footer(text=f"Hosted by {interaction.user}")
-    embed.set_image(url="https://media.discordapp.net/attachments/1383202755727855707/1419239234535030868/EN41iD0.png?ex=68d10909&is=68cfb789&hm=2b947217afc3a16fcb1895c12b4a20c475c02a8d9377480b066a96716d929529&=&width=1411&height=373")
+    embed.set_image(url="https://media.discordapp.net/attachments/1383202755727855707/1419240376828432445/ou61gyY.png?ex=68d10a1a&is=68cfb89a&hm=be59cc2b3faa3e163b01e78882dddee313f73a5233a51f97cf48b3cb7ecdb613&=&width=1589&height=729")
 
     view = GiveawayView(duration_seconds=seconds, winners=winners, prize=prize, host=interaction.user)
     msg = await interaction.channel.send(embed=embed, view=view)
@@ -1027,7 +1027,7 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
     # Select winners
     users = [await interaction.guild.fetch_member(uid) for uid in view.participants if await interaction.guild.fetch_member(uid) is not None]
     if not users:
-        return await interaction.channel.send("❌ No one entered the giveaway.")
+        return await interaction.channel.send("❌ No one entered the giveaway.", ephemeral=True)
 
     winners_list = random.sample(users, min(len(users), winners))
     winners_mentions = ", ".join(w.mention for w in winners_list)
