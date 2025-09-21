@@ -961,7 +961,6 @@ def parse_duration(duration_str: str) -> int:
 
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
-@has_premium_server()
 async def giveaway(interaction: discord.Interaction, duration: str, winners: int, prize: str):
     seconds = parse_duration(duration)
     if seconds is None:
