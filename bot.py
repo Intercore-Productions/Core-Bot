@@ -959,6 +959,41 @@ def parse_duration(duration_str: str) -> int:
 
     return None
 
+import time
+from discord.ui import View, Button
+
+class GiveawayView(View):
+    def __init__(self, duration_seconds, winners, prize, host):
+        super().__init__(timeout=duration_seconds)
+        self.participants = set()
+        self.winners = winners
+        self.prize = prize
+        self.host = host
+        self.button = Button(label="Join (0)", style=discord.ButtonStyle.primary, custom_id="giveaway_join")
+        self.button.callback = self.join_leave
+        self.add_item(self.button)
+        self.message = None
+        self.end_time = int(time.time()) + duration_seconds
+
+    async def join_leave(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        if user_id in self.participants:
+            self.participants.remove(user_id)
+            await interaction.response.send_message("You left the giveaway!", ephemeral=True)
+        else:
+            self.participants.add(user_id)
+            await interaction.response.send_message("You joined the giveaway!", ephemeral=True)
+        await self.update_button()
+
+    async def update_button(self):
+        self.button.label = f"Join ({len(self.participants)})"
+        if self.message:
+            await self.message.edit(view=self)
+
+    async def on_timeout(self):
+        if self.message:
+            await self.message.edit(view=None)
+
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
 async def giveaway(interaction: discord.Interaction, duration: str, winners: int, prize: str):
@@ -966,23 +1001,31 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
     if seconds is None:
         return await interaction.response.send_message("❌ Invalid duration format! Use `10m`, `2h`, `1d`, `1w`.", ephemeral=True)
 
+    end_timestamp = int(time.time()) + seconds
     embed = discord.Embed(
         title="🎉 Giveaway 🎉",
-        description=f"**Prize:** {prize}\nReact with 🎉 to enter!\n\n⏳ Ends in `{duration}`\n👑 Winners: {winners}",
+        description=f"**Prize:** {prize}\n\n⏳ Ends: <t:{end_timestamp}:R>\n👑 Winners: {winners}",
         color=discord.Color.blurple()
     )
     embed.set_footer(text=f"Hosted by {interaction.user}")
-    msg = await interaction.channel.send(embed=embed)
-    await msg.add_reaction("🎉")
+
+    view = GiveawayView(duration_seconds=seconds, winners=winners, prize=prize, host=interaction.user)
+    msg = await interaction.channel.send(embed=embed, view=view)
+    view.message = msg
 
     await interaction.response.send_message("✅ Giveaway started!", ephemeral=True)
 
-    await asyncio.sleep(seconds)
+    # Update button label every minute
+    for _ in range(seconds // 60):
+        await asyncio.sleep(60)
+        await view.update_button()
 
-    new_msg = await interaction.channel.fetch_message(msg.id)
-    users = [u async for u in new_msg.reactions[0].users() if not u.bot]
+    await asyncio.sleep(seconds % 60)
+    await view.update_button()
 
-    if len(users) == 0:
+    # Select winners
+    users = [await interaction.guild.fetch_member(uid) for uid in view.participants if await interaction.guild.fetch_member(uid) is not None]
+    if not users:
         return await interaction.channel.send("❌ No one entered the giveaway.")
 
     winners_list = random.sample(users, min(len(users), winners))
