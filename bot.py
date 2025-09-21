@@ -980,8 +980,7 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
     await asyncio.sleep(seconds)
 
     new_msg = await interaction.channel.fetch_message(msg.id)
-    users = await new_msg.reactions[0].users().flatten()
-    users = [u for u in users if not u.bot]
+    users = [u async for u in new_msg.reactions[0].users() if not u.bot]
 
     if len(users) == 0:
         return await interaction.channel.send("❌ No one entered the giveaway.")
