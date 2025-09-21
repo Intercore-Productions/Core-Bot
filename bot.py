@@ -158,30 +158,6 @@ def has_premium_server():
             return await func(interaction, *args, **kwargs)
         return wrapper
     return decorator
-    
-# /premium
-@bot.tree.command(name="premium", description="Toggle premium status for a guild (developers only)")
-@app_commands.describe(guild_id="Guild ID to update", premium="Set premium status: True (Yes) or False (No)")
-async def premium(interaction: discord.Interaction, guild_id: str, premium: bool):
-    allowed_ids = {1099013081683738676, 1044899567822454846}
-    if interaction.user.id not in allowed_ids:
-        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
-        return
-    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
-    resp = requests.get(url, headers=SUPABASE_HEADERS)
-    if resp.status_code != 200 or not resp.json():
-        await interaction.response.send_message("❌ Guild not found in database.", ephemeral=True)
-        return
-    premium_value = "Yes" if premium else "No"
-    payload = {"premium_server": premium_value}
-    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}" 
-    patch_headers = SUPABASE_HEADERS.copy()
-    patch_headers["Prefer"] = "return=representation"
-    patch_resp = requests.patch(patch_url, headers=patch_headers, data=json.dumps(payload))
-    if patch_resp.status_code in (200, 204):
-        await interaction.response.send_message(f"✅ Premium status for guild {guild_id} set to {premium_value}.", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"❌ Failed to update premium status: {patch_resp.text}", ephemeral=True)
 
 # /purge command
 def has_delete_messages():
@@ -194,16 +170,6 @@ def has_delete_messages():
             return False
         return True
     return app_commands.check(predicate)
-
-@bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
-@app_commands.describe(amount="Number of messages to delete (max 150)")
-@has_premium_server()
-@has_delete_messages()
-async def purge(interaction: discord.Interaction, amount: int):
-    if amount < 1 or amount > 150:
-        return await interaction.response.send_message("You can only delete between 1 and 150 messages.", ephemeral=True)
-    deleted = await interaction.channel.purge(limit=amount)
-    await interaction.response.send_message(f"✅ Deleted {len(deleted)} messages.", ephemeral=True)
 
 # /giveaway
 import discord
@@ -345,6 +311,40 @@ async def giveaway_reroll(interaction: discord.Interaction, message_id: str, win
         await interaction.response.send_message("✅ Giveaway rerolled!", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"Error: {e}", ephemeral=True)
+
+# /premium
+@bot.tree.command(name="premium", description="Toggle premium status for a guild (developers only)")
+@app_commands.describe(guild_id="Guild ID to update", premium="Set premium status: True (Yes) or False (No)")
+async def premium(interaction: discord.Interaction, guild_id: str, premium: bool):
+    allowed_ids = {1099013081683738676, 1044899567822454846}
+    if interaction.user.id not in allowed_ids:
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
+    resp = requests.get(url, headers=SUPABASE_HEADERS)
+    if resp.status_code != 200 or not resp.json():
+        await interaction.response.send_message("❌ Guild not found in database.", ephemeral=True)
+        return
+    premium_value = "Yes" if premium else "No"
+    payload = {"premium_server": premium_value}
+    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}" 
+    patch_headers = SUPABASE_HEADERS.copy()
+    patch_headers["Prefer"] = "return=representation"
+    patch_resp = requests.patch(patch_url, headers=patch_headers, data=json.dumps(payload))
+    if patch_resp.status_code in (200, 204):
+        await interaction.response.send_message(f"✅ Premium status for guild {guild_id} set to {premium_value}.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ Failed to update premium status: {patch_resp.text}", ephemeral=True)
+
+@bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
+@app_commands.describe(amount="Number of messages to delete (max 150)")
+@has_premium_server()
+@has_delete_messages()
+async def purge(interaction: discord.Interaction, amount: int):
+    if amount < 1 or amount > 150:
+        return await interaction.response.send_message("You can only delete between 1 and 150 messages.", ephemeral=True)
+    deleted = await interaction.channel.purge(limit=amount)
+    await interaction.response.send_message(f"✅ Deleted {len(deleted)} messages.", ephemeral=True)
 
 # /suggest
 from discord import Embed
