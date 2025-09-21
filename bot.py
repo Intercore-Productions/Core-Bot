@@ -196,9 +196,9 @@ def has_delete_messages():
     return app_commands.check(predicate)
 
 @bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
+@app_commands.describe(amount="Number of messages to delete (max 150)")
 @has_premium_server()
 @has_delete_messages()
-@app_commands.describe(amount="Number of messages to delete (max 150)")
 async def purge(interaction: discord.Interaction, amount: int):
     if amount < 1 or amount > 150:
         return await interaction.response.send_message("You can only delete between 1 and 150 messages.", ephemeral=True)
