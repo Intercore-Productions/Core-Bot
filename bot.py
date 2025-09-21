@@ -1025,9 +1025,15 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
     await view.update_button()
 
     # Select winners
+
     users = [await interaction.guild.fetch_member(uid) for uid in view.participants if await interaction.guild.fetch_member(uid) is not None]
     if not users:
-        return await interaction.channel.send("❌ No one entered the giveaway.", ephemeral=True)
+        no_entry_embed = discord.Embed(
+            title="❌ Giveaway Cancelled",
+            description="No one entered the giveaway.",
+            color=discord.Color.red()
+        )
+        return await interaction.channel.send(embed=no_entry_embed, ephemeral=True)
 
     winners_list = random.sample(users, min(len(users), winners))
     winners_mentions = ", ".join(w.mention for w in winners_list)
