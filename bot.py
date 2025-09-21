@@ -1008,7 +1008,7 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
         color=discord.Color.blurple()
     )
     embed.set_footer(text=f"Hosted by {interaction.user}")
-    embed.set_image(url="https://media.discordapp.net/attachments/1383202755727855707/1419238523214495865/HMnMMzM.jpg?ex=68d10860&is=68cfb6e0&hm=a51af15e817ad00d3acdec6821cb93d6dff9a00030af98a142de82d72ae3cba3&=&width=1635&height=920")
+    embed.set_image(url="https://media.discordapp.net/attachments/1383202755727855707/1419239234535030868/EN41iD0.png?ex=68d10909&is=68cfb789&hm=2b947217afc3a16fcb1895c12b4a20c475c02a8d9377480b066a96716d929529&=&width=1411&height=373")
 
     view = GiveawayView(duration_seconds=seconds, winners=winners, prize=prize, host=interaction.user)
     msg = await interaction.channel.send(embed=embed, view=view)
