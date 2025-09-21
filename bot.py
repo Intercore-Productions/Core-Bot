@@ -1033,7 +1033,7 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
             description="No one entered the giveaway.",
             color=discord.Color.red()
         )
-        return await interaction.channel.send(embed=no_entry_embed, ephemeral=True)
+        return await interaction.channel.send(embed=no_entry_embed)
 
     winners_list = random.sample(users, min(len(users), winners))
     winners_mentions = ", ".join(w.mention for w in winners_list)
