@@ -95,6 +95,27 @@ async def save_config_to_db(interaction, session_id):
 
 import psutil
 
+# Giveaway participants cache
+import threading
+giveaway_participants_cache = {}  # {message_id: set(user_ids)}
+
+def remove_giveaway_cache_later(message_id, delay=86400):
+    def remove():
+        giveaway_participants_cache.pop(message_id, None)
+    t = threading.Timer(delay, remove)
+    t.daemon = True
+    t.start()
+
+# Permission check: Create Events
+def has_create_events():
+    async def predicate(interaction: discord.Interaction):
+        perms = interaction.user.guild_permissions
+        if not getattr(perms, 'create_events', False):
+            await interaction.response.send_message("You need the 'Create Events' permission to use this command.", ephemeral=True)
+            return False
+        return True
+    return app_commands.check(predicate)
+
 def get_cpu_usage():
     """Returns the current CPU usage percentage."""
     return psutil.cpu_percent(interval=1)
@@ -974,6 +995,7 @@ class GiveawayView(View):
         self.add_item(self.button)
         self.message = None
         self.end_time = int(time.time()) + duration_seconds
+        self.message_id = None  # Initialize message_id to None
 
     async def join_leave(self, interaction: discord.Interaction):
         user_id = interaction.user.id
@@ -997,6 +1019,7 @@ class GiveawayView(View):
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
 @has_premium_server()
+@has_create_events()
 async def giveaway(interaction: discord.Interaction, duration: str, winners: int, prize: str):
     seconds = parse_duration(duration)
     if seconds is None:
@@ -1045,6 +1068,28 @@ async def giveaway(interaction: discord.Interaction, duration: str, winners: int
         color=discord.Color.green()
     )
     await interaction.channel.send(embed=end_embed)
+    view.message_id = msg.id  # Set the message_id for the giveaway
+
+@bot.tree.command(name="giveaway-reroll", description="Reroll the winners for a giveaway")
+@app_commands.describe(message_id="ID of the giveaway message", winners="Number of winners to reroll")
+@has_create_events()
+async def giveaway_reroll(interaction: discord.Interaction, message_id: str, winners: int):
+    try:
+        participants = giveaway_participants_cache.get(int(message_id), set())
+        users = [await interaction.guild.fetch_member(uid) for uid in participants if await interaction.guild.fetch_member(uid) is not None]
+        if not users:
+            return await interaction.response.send_message("❌ No participants found for this giveaway.", ephemeral=True)
+        winners_list = random.sample(users, min(len(users), winners))
+        winners_mentions = ", ".join(w.mention for w in winners_list)
+        reroll_embed = discord.Embed(
+            title="🎉 Giveaway Rerolled 🎉",
+            description=f"👑 New Winners: {winners_mentions}",
+            color=discord.Color.orange()
+        )
+        await interaction.channel.send(embed=reroll_embed)
+        await interaction.response.send_message("✅ Giveaway rerolled!", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"Error: {e}", ephemeral=True)
 
 # /suggest
 from discord import Embed
