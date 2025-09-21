@@ -1763,10 +1763,12 @@ class EmbedCreatorView(View):
         self.premium = premium
         self.presets = presets or []
         self.selected_preset = None
-        self.channel_to_send = None
+        self.channel_to_
         self.add_item(Button(label="Title", style=discord.ButtonStyle.primary, custom_id="edit_title"))
         self.add_item(Button(label="Description", style=discord.ButtonStyle.primary, custom_id="edit_desc"))
         self.add_item(Button(label="Color", style=discord.ButtonStyle.secondary, custom_id="edit_color"))
+        self.add_item(Button(label="Author", style=discord.ButtonStyle.secondary, custom_id="edit_author"))
+        self.add_item(Button(label="Footer", style=discord.ButtonStyle.secondary, custom_id="edit_footer"))
         if premium:
             self.add_item(Button(label="Save Preset", style=discord.ButtonStyle.success, custom_id="save_preset"))
             if self.presets:
@@ -1775,6 +1777,26 @@ class EmbedCreatorView(View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.author_id
+
+    @discord.ui.button(label="Author", style=discord.ButtonStyle.secondary, custom_id="edit_author")
+    async def edit_author(self, interaction: discord.Interaction, button: Button):
+        class AuthorModal(Modal, title="Edit Author"):
+            author = TextInput(label="Author", max_length=256)
+        modal = AuthorModal()
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        self.embed.set_author(name=modal.author.value)
+        await interaction.edit_original_response(embed=self.embed, view=self)
+
+    @discord.ui.button(label="Footer", style=discord.ButtonStyle.secondary, custom_id="edit_footer")
+    async def edit_footer(self, interaction: discord.Interaction, button: Button):
+        class FooterModal(Modal, title="Edit Footer"):
+            footer = TextInput(label="Footer", max_length=2048)
+        modal = FooterModal()
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        self.embed.set_footer(text=modal.footer.value)
+        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Title", style=discord.ButtonStyle.primary, custom_id="edit_title")
     async def edit_title(self, interaction: discord.Interaction, button: Button):
@@ -1846,9 +1868,14 @@ class EmbedCreatorView(View):
 @bot.tree.command(name="embed", description="Create a custom embed")
 @has_premium_server()
 async def embed_command(interaction: discord.Interaction):
-    presets = []
-    view = EmbedCreatorView(author_id=interaction.user.id, premium=premium, presets=presets)
-    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view, ephemeral=True)
+    embed = discord.Embed(title="", description="", color=discord.Color.blurple())
+    view = EmbedCreatorView(author_id=interaction.user.id, premium=True, presets=[])
+    await interaction.response.send_message(
+        "Create your embed:",
+        embed=embed,
+        view=view,
+        ephemeral=True
+    )
 
 # /hello (only for test)
 @bot.tree.command(name="hello", description="Say hi to the bot!")
