@@ -251,20 +251,6 @@ class EmbedBuilderView(View):
         self.presets = presets or []
         self.selected_preset = None
         self.channel_to_send = None
-        self.add_item(Button(label="Title", style=discord.ButtonStyle.primary, custom_id="edit_title"))
-        self.add_item(Button(label="Description", style=discord.ButtonStyle.primary, custom_id="edit_desc"))
-        self.add_item(Button(label="Color", style=discord.ButtonStyle.secondary, custom_id="edit_color"))
-        self.add_item(Button(label="Author", style=discord.ButtonStyle.secondary, custom_id="edit_author"))
-        self.add_item(Button(label="Footer", style=discord.ButtonStyle.secondary, custom_id="edit_footer"))
-        self.add_item(Button(label="Image", style=discord.ButtonStyle.secondary, custom_id="edit_image"))
-        self.add_item(Button(label="Thumbnail", style=discord.ButtonStyle.secondary, custom_id="edit_thumbnail"))
-        self.add_item(Button(label="Add Field", style=discord.ButtonStyle.secondary, custom_id="add_field"))
-        if premium:
-            self.add_item(Button(label="Save Preset", style=discord.ButtonStyle.success, custom_id="save_preset"))
-            if self.presets:
-                self.add_item(Select(placeholder="Load Preset", options=[discord.SelectOption(label=p['name'], value=p['id']) for p in self.presets], custom_id="load_preset"))
-        self.add_item(Button(label="Send", style=discord.ButtonStyle.success, custom_id="send_embed"))
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.author_id
 
