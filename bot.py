@@ -264,12 +264,15 @@ class EmbedBuilderView(View):
 
     @discord.ui.button(label="Title", style=discord.ButtonStyle.primary, custom_id="edit_title")
     async def edit_title(self, interaction: discord.Interaction, button: Button):
-        class TitleModal(Modal, title="Edit Title"):
-            title = TextInput(label="Title", max_length=256)
-        modal = TitleModal()
+        class TitleModal(Modal):
+            def __init__(self, current_title):
+                super().__init__(title="Edit Title")
+                self.title_input = TextInput(label="Title", max_length=256, default=current_title or "")
+                self.add_item(self.title_input)
+        modal = TitleModal(self.embed.title)
         await interaction.response.send_modal(modal)
         await modal.wait()
-        self.embed.title = modal.title.value
+        self.embed.title = modal.title_input.value
         await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Description", style=discord.ButtonStyle.primary, custom_id="edit_desc")
@@ -284,37 +287,54 @@ class EmbedBuilderView(View):
 
     @discord.ui.button(label="Color", style=discord.ButtonStyle.secondary, custom_id="edit_color")
     async def edit_color(self, interaction: discord.Interaction, button: Button):
-        class ColorModal(Modal, title="Edit Color (HEX)"):
-            color = TextInput(label="HEX Color", placeholder="#5865F2", max_length=7)
-        modal = ColorModal()
+        class ColorModal(Modal):
+            def __init__(self, current_color):
+                super().__init__(title="Edit Color (HEX)")
+                hex_val = f"#{current_color:06X}" if isinstance(current_color, int) else (str(current_color) if current_color else "#5865F2")
+                self.color_input = TextInput(label="HEX Color", placeholder="#5865F2", max_length=7, default=hex_val)
+                self.add_item(self.color_input)
+        current_color = self.embed.color.value if self.embed.color else None
+        modal = ColorModal(current_color)
         await interaction.response.send_modal(modal)
         await modal.wait()
         try:
-            self.embed.color = discord.Color(int(modal.color.value.replace('#',''), 16))
+            self.embed.color = discord.Color(int(modal.color_input.value.replace('#',''), 16))
         except Exception:
-            await interaction.followup.send("Invalid color! Use HEX format.", ephemeral=True)
+            await interaction.followup.send("Invalid color! Usa formato HEX.", ephemeral=True)
         await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Author", style=discord.ButtonStyle.secondary, custom_id="edit_author")
     async def edit_author(self, interaction: discord.Interaction, button: Button):
-        class AuthorModal(Modal, title="Edit Author"):
-            author = TextInput(label="Author", max_length=256)
-            icon_url = TextInput(label="Author Icon URL", required=False)
-        modal = AuthorModal()
+        current_author = self.embed.author.name if self.embed.author else ""
+        current_icon = self.embed.author.icon_url if self.embed.author and self.embed.author.icon_url else ""
+        class AuthorModal(Modal):
+            def __init__(self, author, icon):
+                super().__init__(title="Edit Author")
+                self.author_input = TextInput(label="Author", max_length=256, default=author or "")
+                self.icon_url_input = TextInput(label="Author Icon URL", required=False, default=icon or "")
+                self.add_item(self.author_input)
+                self.add_item(self.icon_url_input)
+        modal = AuthorModal(current_author, current_icon)
         await interaction.response.send_modal(modal)
         await modal.wait()
-        self.embed.set_author(name=modal.author.value, icon_url=modal.icon_url.value or discord.Embed.Empty)
+        self.embed.set_author(name=modal.author_input.value, icon_url=modal.icon_url_input.value or discord.Embed.Empty)
         await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Footer", style=discord.ButtonStyle.secondary, custom_id="edit_footer")
     async def edit_footer(self, interaction: discord.Interaction, button: Button):
-        class FooterModal(Modal, title="Edit Footer"):
-            footer = TextInput(label="Footer", max_length=2048)
-            icon_url = TextInput(label="Footer Icon URL", required=False)
-        modal = FooterModal()
+        current_footer = self.embed.footer.text if self.embed.footer else ""
+        current_icon = self.embed.footer.icon_url if self.embed.footer and self.embed.footer.icon_url else ""
+        class FooterModal(Modal):
+            def __init__(self, footer, icon):
+                super().__init__(title="Edit Footer")
+                self.footer_input = TextInput(label="Footer", max_length=2048, default=footer or "")
+                self.icon_url_input = TextInput(label="Footer Icon URL", required=False, default=icon or "")
+                self.add_item(self.footer_input)
+                self.add_item(self.icon_url_input)
+        modal = FooterModal(current_footer, current_icon)
         await interaction.response.send_modal(modal)
         await modal.wait()
-        self.embed.set_footer(text=modal.footer.value, icon_url=modal.icon_url.value or discord.Embed.Empty)
+        self.embed.set_footer(text=modal.footer_input.value, icon_url=modal.icon_url_input.value or discord.Embed.Empty)
         await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Image", style=discord.ButtonStyle.secondary, custom_id="edit_image")
