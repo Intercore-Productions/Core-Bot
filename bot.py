@@ -240,83 +240,6 @@ class GiveawayView(View):
         if self.message:
             await self.message.edit(view=None)
 
-@bot.tree.command(name="giveaway", description="Start a giveaway")
-@app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
-@has_premium_server()
-@has_create_events()
-async def giveaway(interaction: discord.Interaction, duration: str, winners: int, prize: str):
-    seconds = parse_duration(duration)
-    if seconds is None:
-        return await interaction.response.send_message("❌ Invalid duration format! Use `10m`, `2h`, `1d`, `1w`.", ephemeral=True)
-
-    end_timestamp = int(time.time()) + seconds
-    embed = discord.Embed(
-        title="🎉 Giveaway 🎉",
-        description=f"**Prize:** {prize}\n\n⏳ Ends: <t:{end_timestamp}:R>\n👑 Winners: {winners}",
-        color=discord.Color.blurple()
-    )
-    embed.set_footer(text=f"Hosted by {interaction.user}")
-    embed.set_image(url="https://media.discordapp.net/attachments/1383202755727855707/1419240376828432445/ou61gyY.png?ex=68d10a1a&is=68cfb89a&hm=be59cc2b3faa3e163b01e78882dddee313f73a5233a51f97cf48b3cb7ecdb613&=&width=1589&height=729")
-
-    view = GiveawayView(duration_seconds=seconds, winners=winners, prize=prize, host=interaction.user)
-    msg = await interaction.channel.send(embed=embed, view=view)
-    view.message = msg
-    view.message_id = msg.id
-    giveaway_participants_cache[msg.id] = set(view.participants)
-
-    await interaction.response.send_message("✅ Giveaway started!", ephemeral=True)
-
-    # Update button label every minute
-    for _ in range(seconds // 60):
-        await asyncio.sleep(60)
-        await view.update_button()
-
-    await asyncio.sleep(seconds % 60)
-    await view.update_button()
-
-    # Select winners
-
-    users = [await interaction.guild.fetch_member(uid) for uid in view.participants if await interaction.guild.fetch_member(uid) is not None]
-    if not users:
-        no_entry_embed = discord.Embed(
-            title="❌ Giveaway Cancelled",
-            description="No one entered the giveaway.",
-            color=discord.Color.red()
-        )
-        return await interaction.channel.send(embed=no_entry_embed)
-
-    winners_list = random.sample(users, min(len(users), winners))
-    winners_mentions = ", ".join(w.mention for w in winners_list)
-
-    end_embed = discord.Embed(
-        title="🎉 Giveaway Ended 🎉",
-        description=f"**Prize:** {prize}\n👑 Winners: {winners_mentions}",
-        color=discord.Color.green()
-    )
-    await interaction.channel.send(embed=end_embed)
-    view.message_id = msg.id  # Set the message_id for the giveaway
-
-@bot.tree.command(name="giveaway-reroll", description="Reroll the winners for a giveaway")
-@app_commands.describe(message_id="ID of the giveaway message", winners="Number of winners to reroll")
-@has_create_events()
-async def giveaway_reroll(interaction: discord.Interaction, message_id: str, winners: int):
-    try:
-        participants = giveaway_participants_cache.get(int(message_id), set())
-        users = [await interaction.guild.fetch_member(uid) for uid in participants if await interaction.guild.fetch_member(uid) is not None]
-        if not users:
-            return await interaction.response.send_message("❌ No participants found for this giveaway.", ephemeral=True)
-        winners_list = random.sample(users, min(len(users), winners))
-        winners_mentions = ", ".join(w.mention for w in winners_list)
-        reroll_embed = discord.Embed(
-            title="🎉 Giveaway Rerolled 🎉",
-            description=f"👑 New Winners: {winners_mentions}",
-            color=discord.Color.orange()
-        )
-        await interaction.channel.send(embed=reroll_embed)
-        await interaction.response.send_message("✅ Giveaway rerolled!", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"Error: {e}", ephemeral=True)
-
 from discord.ui import Modal, TextInput
 
 class EmbedBuilderView(View):
@@ -481,6 +404,83 @@ class EmbedBuilderView(View):
             await interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
         except Exception:
             await interaction.response.send_message("Error sending embed.", ephemeral=True)
+
+@bot.tree.command(name="giveaway", description="Start a giveaway")
+@app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
+@has_premium_server()
+@has_create_events()
+async def giveaway(interaction: discord.Interaction, duration: str, winners: int, prize: str):
+    seconds = parse_duration(duration)
+    if seconds is None:
+        return await interaction.response.send_message("❌ Invalid duration format! Use `10m`, `2h`, `1d`, `1w`.", ephemeral=True)
+
+    end_timestamp = int(time.time()) + seconds
+    embed = discord.Embed(
+        title="🎉 Giveaway 🎉",
+        description=f"**Prize:** {prize}\n\n⏳ Ends: <t:{end_timestamp}:R>\n👑 Winners: {winners}",
+        color=discord.Color.blurple()
+    )
+    embed.set_footer(text=f"Hosted by {interaction.user}")
+    embed.set_image(url="https://media.discordapp.net/attachments/1383202755727855707/1419240376828432445/ou61gyY.png?ex=68d10a1a&is=68cfb89a&hm=be59cc2b3faa3e163b01e78882dddee313f73a5233a51f97cf48b3cb7ecdb613&=&width=1589&height=729")
+
+    view = GiveawayView(duration_seconds=seconds, winners=winners, prize=prize, host=interaction.user)
+    msg = await interaction.channel.send(embed=embed, view=view)
+    view.message = msg
+    view.message_id = msg.id
+    giveaway_participants_cache[msg.id] = set(view.participants)
+
+    await interaction.response.send_message("✅ Giveaway started!", ephemeral=True)
+
+    # Update button label every minute
+    for _ in range(seconds // 60):
+        await asyncio.sleep(60)
+        await view.update_button()
+
+    await asyncio.sleep(seconds % 60)
+    await view.update_button()
+
+    # Select winners
+
+    users = [await interaction.guild.fetch_member(uid) for uid in view.participants if await interaction.guild.fetch_member(uid) is not None]
+    if not users:
+        no_entry_embed = discord.Embed(
+            title="❌ Giveaway Cancelled",
+            description="No one entered the giveaway.",
+            color=discord.Color.red()
+        )
+        return await interaction.channel.send(embed=no_entry_embed)
+
+    winners_list = random.sample(users, min(len(users), winners))
+    winners_mentions = ", ".join(w.mention for w in winners_list)
+
+    end_embed = discord.Embed(
+        title="🎉 Giveaway Ended 🎉",
+        description=f"**Prize:** {prize}\n👑 Winners: {winners_mentions}",
+        color=discord.Color.green()
+    )
+    await interaction.channel.send(embed=end_embed)
+    view.message_id = msg.id  # Set the message_id for the giveaway
+
+@bot.tree.command(name="giveaway-reroll", description="Reroll the winners for a giveaway")
+@app_commands.describe(message_id="ID of the giveaway message", winners="Number of winners to reroll")
+@has_create_events()
+async def giveaway_reroll(interaction: discord.Interaction, message_id: str, winners: int):
+    try:
+        participants = giveaway_participants_cache.get(int(message_id), set())
+        users = [await interaction.guild.fetch_member(uid) for uid in participants if await interaction.guild.fetch_member(uid) is not None]
+        if not users:
+            return await interaction.response.send_message("❌ No participants found for this giveaway.", ephemeral=True)
+        winners_list = random.sample(users, min(len(users), winners))
+        winners_mentions = ", ".join(w.mention for w in winners_list)
+        reroll_embed = discord.Embed(
+            title="🎉 Giveaway Rerolled 🎉",
+            description=f"👑 New Winners: {winners_mentions}",
+            color=discord.Color.orange()
+        )
+        await interaction.channel.send(embed=reroll_embed)
+        await interaction.response.send_message("✅ Giveaway rerolled!", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"Error: {e}", ephemeral=True)
 
 # --- /embed command ---
 @bot.tree.command(name="embed", description="Create a custom embed")
