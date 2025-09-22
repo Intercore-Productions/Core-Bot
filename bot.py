@@ -245,7 +245,7 @@ from discord.ui import Modal, TextInput
 class EmbedBuilderView(View):
     def __init__(self, author_id, premium=False, presets=None):
         super().__init__(timeout=600)
-        self.embed = discord.Embed(title="", description="", color=discord.Color.blurple())
+        self.embed = discord.Embed(title="Custom Embed", description="Use Buttons to change text.", color=discord.Color.blurple())
         self.author_id = author_id
         self.premium = premium
         self.presets = presets or []
