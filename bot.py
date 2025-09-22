@@ -251,6 +251,14 @@ class EmbedBuilderView(View):
         self.presets = presets or []
         self.selected_preset = None
         self.channel_to_send = None
+        # Only add the select if there are presets
+        if self.presets:
+            options = [discord.SelectOption(label=p['name'], value=str(p['id'])) for p in self.presets if 'name' in p and 'id' in p]
+            select = Select(placeholder="Load Preset", custom_id="load_preset", options=options)
+            async def callback(interaction, select=select):
+                await self.load_preset(interaction, select)
+            select.callback = callback
+            self.add_item(select)
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.author_id
 
@@ -361,7 +369,7 @@ class EmbedBuilderView(View):
         else:
             await interaction.response.send_message("Error saving preset.", ephemeral=True)
 
-    @discord.ui.select(placeholder="Load Preset", custom_id="load_preset", options=[])
+    # The select for loading presets will be added dynamically in __init__ only if there are presets
     async def load_preset(self, interaction: discord.Interaction, select: Select):
         preset_id = select.values[0]
         url = f"{SUPABASE_URL}/rest/v1/embed_presets?id=eq.{preset_id}"
