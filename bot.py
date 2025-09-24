@@ -272,6 +272,7 @@ class EmbedBuilderView(View):
         modal = TitleModal(self.embed.title)
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         self.embed.title = modal.title_input.value
         await interaction.edit_original_response(embed=self.embed, view=self)
 
@@ -282,6 +283,7 @@ class EmbedBuilderView(View):
         modal = DescModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         self.embed.description = modal.desc.value
         await interaction.edit_original_response(embed=self.embed, view=self)
 
@@ -297,6 +299,7 @@ class EmbedBuilderView(View):
         modal = ColorModal(current_color)
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         try:
             self.embed.color = discord.Color(int(modal.color_input.value.replace('#',''), 16))
         except Exception:
@@ -317,6 +320,7 @@ class EmbedBuilderView(View):
         modal = AuthorModal(current_author, current_icon)
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         icon_url = modal.icon_url_input.value.strip()
         if icon_url:
             self.embed.set_author(name=modal.author_input.value, icon_url=icon_url)
@@ -338,6 +342,7 @@ class EmbedBuilderView(View):
         modal = FooterModal(current_footer, current_icon)
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         icon_url = modal.icon_url_input.value.strip()
         if icon_url:
             self.embed.set_footer(text=modal.footer_input.value, icon_url=icon_url)
@@ -352,6 +357,7 @@ class EmbedBuilderView(View):
         modal = ImageModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         self.embed.set_image(url=modal.url.value)
         await interaction.edit_original_response(embed=self.embed, view=self)
 
@@ -362,6 +368,7 @@ class EmbedBuilderView(View):
         modal = ThumbModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         self.embed.set_thumbnail(url=modal.url.value)
         await interaction.edit_original_response(embed=self.embed, view=self)
 
@@ -374,6 +381,7 @@ class EmbedBuilderView(View):
         modal = FieldModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
+        await interaction.response.defer()
         self.embed.add_field(name=modal.name.value, value=modal.value.value, inline=(modal.inline.value.lower() == "yes" if modal.inline.value else False))
         await interaction.edit_original_response(embed=self.embed, view=self)
 
@@ -405,27 +413,33 @@ class EmbedBuilderView(View):
         if resp.status_code == 200 and resp.json():
             preset = resp.json()[0]
             self.embed = discord.Embed.from_dict(json.loads(preset["embed_json"]))
+            await interaction.response.defer()
             await interaction.edit_original_response(embed=self.embed, view=self)
         else:
             await interaction.response.send_message("Error loading preset.", ephemeral=True)
 
     @discord.ui.button(label="Send", style=discord.ButtonStyle.success, custom_id="send_embed")
     async def send_embed(self, interaction: discord.Interaction, button: Button):
-        class ChannelModal(Modal, title="Select Channel"):
-            channel_id = TextInput(label="Channel ID", placeholder="Enter channel ID", max_length=20)
-        modal = ChannelModal()
-        await interaction.response.send_modal(modal)
-        await modal.wait()
-        try:
-            channel_id = int(modal.channel_id.value)
+        # Mostra una select con tutti i canali testuali dove l'utente può scrivere
+        text_channels = [c for c in interaction.guild.text_channels if c.permissions_for(interaction.user).send_messages]
+        if not text_channels:
+            await interaction.response.send_message("No available text channels to send the embed.", ephemeral=True)
+            return
+        options = [discord.SelectOption(label=ch.name, value=str(ch.id)) for ch in text_channels]
+        select = Select(placeholder="Select a channel", options=options, min_values=1, max_values=1)
+        async def select_callback(select_interaction: discord.Interaction):
+            channel_id = int(select.values[0])
             channel = interaction.guild.get_channel(channel_id)
             if not channel or not isinstance(channel, TextChannel):
-                await interaction.followup.send("Invalid channel!", ephemeral=True)
+                await select_interaction.response.send_message("Invalid channel!", ephemeral=True)
                 return
             await channel.send(embed=self.embed)
-            await interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
-        except Exception:
-            await interaction.response.send_message("Error sending embed.", ephemeral=True)
+            await select_interaction.response.send_message(f"Embed sent in <#{channel_id}>!")
+            await select_interaction.message.delete()
+        select.callback = select_callback
+        view = View()
+        view.add_item(select)
+        await interaction.response.send_message("Select a channel to send the embed:", view=view, ephemeral=True)
 
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
@@ -524,7 +538,7 @@ async def embed_command(interaction: discord.Interaction):
             if resp.status_code == 200:
                 presets = resp.json()
     view = EmbedBuilderView(author_id=interaction.user.id, premium=premium, presets=presets)
-    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view, ephemeral=True)
+    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view)
 
 # /premium
 @bot.tree.command(name="premium", description="Toggle premium status for a guild (developers only)")
