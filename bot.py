@@ -317,7 +317,11 @@ class EmbedBuilderView(View):
         modal = AuthorModal(current_author, current_icon)
         await interaction.response.send_modal(modal)
         await modal.wait()
-        self.embed.set_author(name=modal.author_input.value, icon_url=modal.icon_url_input.value or discord.Embed.Empty)
+        icon_url = modal.icon_url_input.value.strip()
+        if icon_url:
+            self.embed.set_author(name=modal.author_input.value, icon_url=icon_url)
+        else:
+            self.embed.set_author(name=modal.author_input.value)
         await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Footer", style=discord.ButtonStyle.secondary, custom_id="edit_footer")
@@ -334,7 +338,11 @@ class EmbedBuilderView(View):
         modal = FooterModal(current_footer, current_icon)
         await interaction.response.send_modal(modal)
         await modal.wait()
-        self.embed.set_footer(text=modal.footer_input.value, icon_url=modal.icon_url_input.value or discord.Embed.Empty)
+        icon_url = modal.icon_url_input.value.strip()
+        if icon_url:
+            self.embed.set_footer(text=modal.footer_input.value, icon_url=icon_url)
+        else:
+            self.embed.set_footer(text=modal.footer_input.value)
         await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Image", style=discord.ButtonStyle.secondary, custom_id="edit_image")
