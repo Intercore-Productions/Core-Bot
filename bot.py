@@ -800,6 +800,94 @@ async def game_bans(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}")
 
+# /modmail
+from discord import TextChannel, CategoryChannel
+
+@bot.tree.command(name="modmail", description="Configure or disable the modmail system for this server")
+@has_premium_server()
+@app_commands.describe(
+    category="Category where modmail channels will be created",
+    staff_roles="Staff roles allowed (mention or ID, comma separated)",
+    log_channel="Channel where modmail logs will be sent"
+)
+async def modmail(
+    interaction: discord.Interaction,
+    category: Optional[CategoryChannel] = None,
+    staff_roles: Optional[str] = None,
+    log_channel: Optional[TextChannel] = None
+):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
+        return
+
+    config = load_config(interaction.guild.id)
+    if config and config.get("modmail_enabled") == "true":
+        # Already enabled, ask if disable
+        class ConfirmView(View):
+            def __init__(self):
+                super().__init__(timeout=30)
+                self.value = None
+            @discord.ui.button(label="Disable Modmail", style=discord.ButtonStyle.danger)
+            async def confirm(self, interaction2, button):
+                self.value = True
+                await interaction2.response.defer()
+                self.stop()
+            @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+            async def cancel(self, interaction2, button):
+                self.value = False
+                await interaction2.response.defer()
+                self.stop()
+        view = ConfirmView()
+        await interaction.response.send_message(
+            "Modmail is already enabled. Do you want to disable it and clear the configuration?",
+            view=view, ephemeral=True
+        )
+        await view.wait()
+        if view.value:
+            # Disable and clear columns
+            patch_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{interaction.guild.id}"
+            payload = {
+                "modmail_enabled": "false",
+                "modmail_category_id": "",
+                "modmail_staff_role_ids": "",
+                "modmail_log_channel_id": ""
+            }
+            headers = SUPABASE_HEADERS.copy()
+            headers["Content-Type"] = "application/json"
+            requests.patch(patch_url, headers=headers, data=json.dumps(payload))
+            await interaction.followup.send("✅ Modmail disabled and configuration cleared.", ephemeral=True)
+        else:
+            await interaction.followup.send("Operation cancelled.", ephemeral=True)
+        return
+
+    # If not enabled, ask for params if not provided
+    if not (category and staff_roles and log_channel):
+        await interaction.response.send_message(
+            "To configure modmail, use `/modmail category: <category> staff_roles: <roles> log_channel: <channel>`\nExample: `/modmail category: #modmail staff_roles: @Staff,@Helper log_channel: #modmail-log`",
+            ephemeral=True
+        )
+        return
+
+    # Prepare data
+    staff_ids = []
+    for s in staff_roles.split(","):
+        s = s.strip()
+        if s.startswith("<@&") and s.endswith(">"):
+            staff_ids.append(s[3:-1])
+        elif s.isdigit():
+            staff_ids.append(s)
+    payload = {
+        "modmail_enabled": "true",
+        "modmail_category_id": str(category.id),
+        "modmail_staff_role_ids": json.dumps(staff_ids),
+        "modmail_log_channel_id": str(log_channel.id)
+    }
+    patch_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{interaction.guild.id}"
+    headers = SUPABASE_HEADERS.copy()
+    headers["Content-Type"] = "application/json"
+    requests.patch(patch_url, headers=headers, data=json.dumps(payload))
+    await interaction.response.send_message("✅ Modmail configured and enabled!", ephemeral=True)
+
 # /game-queue
 @bot.tree.command(name="game-queue", description="Show the current server queue.")
 @has_premium_server()
