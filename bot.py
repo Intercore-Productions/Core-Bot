@@ -441,6 +441,84 @@ class EmbedBuilderView(View):
         view.add_item(select)
         await interaction.response.send_message("Select a channel to send the embed:", view=view, ephemeral=True)
 
+from discord.ui import View, Select
+
+class ModmailServerSelect(View):
+    def __init__(self, user, mutual_guilds):
+        super().__init__(timeout=60)
+        options = [
+            discord.SelectOption(
+                label=guild.name,
+                value=str(guild.id),
+                description=f"Send a modmail to {guild.name}"
+            )
+            for guild in mutual_guilds
+        ]
+        self.select = Select(placeholder="Select a server...", options=options, min_values=1, max_values=1)
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+        self.selected_guild_id = None
+        self.user = user
+
+    async def select_callback(self, interaction: discord.Interaction):
+        self.selected_guild_id = int(self.select.values[0])
+        await interaction.response.defer()
+        self.stop()
+
+@bot.event
+async def on_message(message):
+    # Only handle DMs to the bot, not guild messages or bot messages
+    if message.guild is not None or message.author.bot:
+        return
+
+    # Find mutual guilds with modmail enabled
+    mutual_guilds = []
+    for guild in bot.guilds:
+        if guild.get_member(message.author.id):
+            config = load_config(guild.id)
+            if config and config.get("modmail_enabled") == "true":
+                mutual_guilds.append(guild)
+
+    if not mutual_guilds:
+        await message.channel.send("You do not share any server with modmail enabled with this bot.")
+        return
+
+    embed = discord.Embed(
+        title="Modmail Support",
+        description="Select the server you want to contact the staff of.",
+        color=discord.Color.blurple()
+    )
+    view = ModmailServerSelect(message.author, mutual_guilds)
+    await message.channel.send(embed=embed, view=view)
+    await view.wait()
+
+    if view.selected_guild_id is None:
+        await message.channel.send("No server selected. Modmail cancelled.")
+        return
+
+    # Next step: ask for reason (to be implemented in step 2)
+    await message.channel.send(f"Server selected: <t:{view.selected_guild_id}>.")
+
+        # After server selection, ask for the reason with a message
+    if view.selected_guild_id is None:
+        await message.channel.send("No server selected. Modmail cancelled.")
+        return
+
+    await message.channel.send("Please type the reason for your request. You have 2 minutes:")
+
+    def check(m):
+        return m.author.id == message.author.id and m.channel.id == message.channel.id
+
+    try:
+        reason_msg = await bot.wait_for('message', check=check, timeout=120)
+        reason = reason_msg.content.strip()
+    except asyncio.TimeoutError:
+        await message.channel.send("⏰ Timeout. Modmail cancelled.")
+        return
+
+    # Next step: create staff channel and send embed (to be implemented in step 3)
+    await message.channel.send(f"Reason received: `{reason}`. (Next: create staff channel...)")
+
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
 @has_premium_server()
