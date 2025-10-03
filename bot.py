@@ -474,6 +474,14 @@ async def on_message(message):
     # Only handle DMs to the bot, not guild messages or bot messages
     if message.guild is not None or message.author.bot:
         return
+    print("Bot guilds:", [g.name for g in bot.guilds])
+    print("User ID:", message.author.id)
+    for guild in bot.guilds:
+        print(f"Checking guild: {guild.name} ({guild.id})")
+        member = guild.get_member(message.author.id)
+        print("  Member found:", bool(member))
+        config = load_config(guild.id)
+        print("  Modmail enabled:", config and config.get("modmail_enabled"))
 
     # Find mutual guilds with modmail enabled
     mutual_guilds = []
