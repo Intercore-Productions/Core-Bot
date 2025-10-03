@@ -67,6 +67,10 @@ def load_config(guild_id):
         "session_cancel_color": row.get("session_cancel_color"),
         "session_ssu_banner": row.get("session_ssu_banner"),
         "session_ssd_banner": row.get("session_ssd_banner"),
+        "modmail_enabled": row.get("modmail_enabled"),
+        "modmail_category_id": row.get("modmail_category_id"),
+        "modmail_staff_role_ids": row.get("modmail_staff_role_ids"),
+        "modmail_log_channel_id": row.get("modmail_log_channel_id")
     }
     return config
 
