@@ -476,7 +476,7 @@ async def on_message(message):
     for guild in bot.guilds:
         if guild.get_member(message.author.id):
             config = load_config(guild.id)
-            if config and config.get("modmail_enabled") == "true":
+            if config and config.get("modmail_enabled") == "TRUE":
                 mutual_guilds.append(guild)
 
     if not mutual_guilds:
