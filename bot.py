@@ -481,7 +481,7 @@ async def on_message(message):
         try:
             member = await guild.fetch_member(message.author.id)
             config = load_config(guild.id)
-            if config and config.get("modmail_enabled") == "true":
+            if config and config.get("modmail_enabled") == "TRUE":
                 mutual_guilds.append(guild)
         except discord.NotFound:
             continue  # User not in this guild
