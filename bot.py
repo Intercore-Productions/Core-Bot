@@ -1533,11 +1533,17 @@ def get_next_case_number():
         data = resp.json()
         if data:
             last_case = data[0].get("case_number")
-            if isinstance(last_case, int):
-                return last_case + 1
+            print("🔍 last_case =", last_case)  # debug
+            if isinstance(last_case, (int, float)):
+                return int(last_case) + 1
             else:
-                return 1
-    return 1
+                return 1  # er. co
+        else:
+            return 1  
+    else:
+        print("⚠️ Supabase error:", resp.status_code, resp.text)
+        return 1
+
 
 def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
     case_number = get_next_case_number()
