@@ -1528,8 +1528,15 @@ MODLOGS_TABLE = "modlogs"
 def get_next_case_number():
     url = f"{SUPABASE_URL}/rest/v1/{MODLOGS_TABLE}?select=case_number&order=case_number.desc&limit=1"
     resp = requests.get(url, headers=SUPABASE_HEADERS)
-    if resp.status_code == 200 and resp.json():
-        return resp.json()[0]["case_number"] + 1
+
+    if resp.status_code == 200:
+        data = resp.json()
+        if data:
+            last_case = data[0].get("case_number")
+            if isinstance(last_case, int):
+                return last_case + 1
+            else:
+                return 1
     return 1
 
 def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
