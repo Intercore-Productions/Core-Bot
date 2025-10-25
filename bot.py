@@ -125,9 +125,20 @@ def get_cpu_usage():
     return psutil.cpu_percent(interval=1)
 
 async def send_modlog_and_dm(user, embed, logs_channel_id, guild):
-    channel = guild.get_channel(int(logs_channel_id))
+    if not logs_channel_id:
+        channel = None
+    else:
+        try:
+            channel = guild.get_channel(int(logs_channel_id))
+        except (ValueError, TypeError):
+            channel = None
+
     if channel:
-        await channel.send(embed=embed)
+        try:
+            await channel.send(embed=embed)
+        except Exception:
+            pass
+
     try:
         await user.send(embed=embed)
     except Exception:
@@ -1545,14 +1556,8 @@ def get_next_case_number():
 
 
 def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
-    print("⚙️  log_mod_action() called")
-    print("→ guild_id:", guild_id)
-    print("→ user_id:", user_id)
-    print("→ moderator_id:", moderator_id)
-    print("→ reason:", reason)
 
     case_number = get_next_case_number()
-    print("→ next case_number:", case_number)
 
     payload = {
         "case_number": case_number,
@@ -1564,12 +1569,8 @@ def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
         "date": discord.utils.utcnow().isoformat()
     }
 
-    print("🧾 Payload to Supabase:", json.dumps(payload, indent=2))
-
     url = f"{SUPABASE_URL}/rest/v1/{MODLOGS_TABLE}"
     resp = requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
-
-    print("🌐 Supabase response:", resp.status_code, resp.text)
 
     return case_number
 
