@@ -1533,7 +1533,6 @@ def get_next_case_number():
         data = resp.json()
         if data:
             last_case = data[0].get("case_number")
-            print("🔍 last_case =", last_case)  # debug
             if isinstance(last_case, (int, float)):
                 return int(last_case) + 1
             else:
@@ -1546,7 +1545,15 @@ def get_next_case_number():
 
 
 def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
+    print("⚙️  log_mod_action() called")
+    print("→ guild_id:", guild_id)
+    print("→ user_id:", user_id)
+    print("→ moderator_id:", moderator_id)
+    print("→ reason:", reason)
+
     case_number = get_next_case_number()
+    print("→ next case_number:", case_number)
+
     payload = {
         "case_number": case_number,
         "guild_id": guild_id,
@@ -1556,9 +1563,16 @@ def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
         "reason": reason or "N/A",
         "date": discord.utils.utcnow().isoformat()
     }
+
+    print("🧾 Payload to Supabase:", json.dumps(payload, indent=2))
+
     url = f"{SUPABASE_URL}/rest/v1/{MODLOGS_TABLE}"
-    requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+    resp = requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+
+    print("🌐 Supabase response:", resp.status_code, resp.text)
+
     return case_number
+
 
 @bot.tree.command(name="warn", description="Warn a user")
 @app_commands.describe(user="User to warn", reason="Reason for warning")
