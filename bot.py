@@ -1224,132 +1224,13 @@ async def server_log(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # /session-config
-@bot.tree.command(name="session-config", description="Configure session messages and colors")
-async def session_config(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
-        return
-
-    questions = [
-        ("session_ssu_message", "Enter the message for Session Start (SSU):"),
-        ("session_ssu_color", "Enter the HEX color for SSU (e.g. #00FF00):"),
-        ("session_ssu_banner", "Enter the banner text for Session Start (SSU):"),
-        ("session_ssd_message", "Enter the message for Session End (SSD):"),
-        ("session_ssd_color", "Enter the HEX color for SSD (e.g. #FFA500):"),
-        ("session_ssd_banner", "Enter the banner text for Session End (SSD):"),
-        ("session_low_message", "Enter the message for Low Players:"),
-        ("session_low_color", "Enter the HEX color for Low Players (e.g. #FF0000):"),
-        ("session_cancel_message", "Enter the message for Session Cancellation:"),
-        ("session_cancel_color", "Enter the HEX color for Cancellation (e.g. #8B0000):"),
-    ]
-    answers = {}
-    await interaction.response.send_message("Session configuration started. Please answer the following questions.", ephemeral=True)
-    channel = interaction.channel
-    user = interaction.user
-
-    def check(m):
-        return m.author.id == user.id and m.channel.id == channel.id
-
-    def is_hex_color(s):
-        return s.startswith("#") and len(s) == 7 and all(c in "0123456789abcdefABCDEF" for c in s[1:])
-
-    for key, question in questions:
-        while True:
-            await channel.send(question)
-            try:
-                msg = await bot.wait_for('message', check=check, timeout=180)
-                value = msg.content.strip()
-                await msg.delete()
-                # Validate HEX color fields
-                if "color" in key:
-                    if not is_hex_color(value):
-                        await channel.send("❌ Invalid HEX color. Please use format #RRGGBB (e.g. #00FF00).", delete_after=10)
-                        continue
-                answers[key] = value
-                break
-            except asyncio.TimeoutError:
-                await channel.send("⏰ Timeout. Configuration cancelled.", delete_after=10)
-                return
-
-    # Save to Supabase (all fields as text)
-    # Only set the 8 session columns and guild_id
-    session_fields = [
-        "session_ssu_message",
-        "session_ssu_color",
-        "session_ssu_banner",
-        "session_ssd_message",
-        "session_ssd_color",
-        "session_ssd_banner",
-        "session_low_message",
-        "session_low_color",
-        "session_cancel_message",
-        "session_cancel_color"
-    ]
-    payload = {"guild_id": str(interaction.guild.id)}
-    for k in session_fields:
-        if k in answers:
-            payload[k] = str(answers[k])
-
-    url = f"{SUPABASE_URL}/rest/v1/server_config"
-    headers = SUPABASE_HEADERS.copy()
-    headers["Content-Type"] = "application/json"
-    headers["Prefer"] = "return=representation"
-    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{interaction.guild.id}"
-    try:
-        resp = requests.patch(patch_url, headers=headers, data=json.dumps(payload))
-        if resp.status_code in (200, 204):
-            await channel.send("✅ Session configuration updated successfully!", delete_after=10)
-        else:
-            await channel.send(f"❌ Error updating configuration: {resp.text}", delete_after=10)
-    except Exception as e:
-        await channel.send(f"❌ Error: {str(e)}", delete_after=10)
+@bot.tree.command(name="session-config", description="Start the guided session configuration setup.")
+async def configs(interaction: discord.Interaction):
+    await interaction.response.send_message("We have moved to a new configuration system! Please use our new website https://mycorebot.vercel.app", ephemeral=True)
 
 # /session-reset
-@bot.tree.command(name="session-reset", description="Reset session message/color customizarion")
-async def session_reset(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
-        return
-
-    session_fields = [
-        "session_ssu_message",
-        "session_ssu_color",
-        "session_ssd_message",
-        "session_ssd_color",
-        "session_low_message",
-        "session_low_color",
-        "session_cancel_message",
-        "session_cancel_color"
-    ]
-    payload = {k: "" for k in session_fields}
-
-    headers = SUPABASE_HEADERS.copy()
-    headers["Content-Type"] = "application/json"
-    headers["Prefer"] = "return=representation"
-    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{interaction.guild.id}"
-    try:
-        resp = requests.patch(patch_url, headers=headers, data=json.dumps(payload))
-        if resp.status_code in (200, 204):
-            await interaction.response.send_message("✅ Session columns reset.", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"❌ Error resetting columns: {resp.text}", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
-
 # /config-reset
-@bot.tree.command(name="config-reset", description="Reset the server configuration")
-async def config_reset(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Only server admins can reset the config.", ephemeral=True)
-        return
-
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?guild_id=eq.{interaction.guild.id}"
-    resp = requests.delete(url, headers=SUPABASE_HEADERS)
-    if resp.status_code not in (200, 204):
-        await interaction.response.send_message(f"❌ Errore nel reset: {resp.text}", ephemeral=True)
-        return
-
-    await interaction.response.send_message("✅ Configuration reset.", ephemeral=True)
+# old
 
 # /maple-log
 @bot.tree.command(name="maple-log", description="Create a 'Core' webhook for your private in-game server logs.")
@@ -2838,18 +2719,9 @@ async def start_config_steps(interaction, session_id):
         return
 
 # --- /config (guided setup) ---
-@bot.tree.command(name="config", description="Start the guided onboarding configuration")
-async def onboarding(interaction: discord.Interaction):
-    config = load_config(interaction.guild.id)
-    if config:
-        return await interaction.response.send_message("❌ This server is already configured. Use `/config-view` to see the current configuration.", ephemeral=True)
-    session_id = str(interaction.guild.id)
-    config_sessions[session_id] = ConfigSession(interaction.user.id, interaction.guild.id)
-    embed = discord.Embed(title="Welcome to Maple Server Bot!", description="Let's get your server configured. This will only take a few minutes.", color=discord.Color.green())
-    embed.add_field(name="How it works", value="I'll guide you through the configuration steps. You can cancel at any time.", inline=False)
-    embed.add_field(name="Start", value="Click the button below to start the configuration.", inline=False)
-    view = StartConfigView(interaction.user.id, session_id)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+@bot.tree.command(name="config", description="Start the guided configuration setup.")
+async def config(interaction: discord.Interaction):
+    await interaction.response.send_message("We have moved to a new configuration system! Please use our new website https://mycorebot.vercel.app", ephemeral=True)
 
 import io
 from discord import File
