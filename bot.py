@@ -241,10 +241,6 @@ import asyncio
 import random
 import re
 
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
-
 def parse_duration(duration_str: str) -> int:
     match = re.match(r"(\d+)([mhdw])", duration_str.lower())
     if not match:
@@ -340,8 +336,11 @@ class EmbedBuilderView(View):
 
     @discord.ui.button(label="Description", style=discord.ButtonStyle.primary, custom_id="edit_desc")
     async def edit_desc(self, interaction: discord.Interaction, button: Button):
-        class DescModal(Modal, title="Edit Description"):
-            desc = TextInput(label="Description", style=discord.TextStyle.paragraph, max_length=2048)
+        class DescModal(Modal):
+            def __init__(self):
+                super().__init__(title="Edit Description")
+                self.desc = TextInput(label="Description", style=discord.TextStyle.paragraph, max_length=2048)
+                self.add_item(self.desc)
         modal = DescModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
@@ -414,8 +413,11 @@ class EmbedBuilderView(View):
 
     @discord.ui.button(label="Image", style=discord.ButtonStyle.secondary, custom_id="edit_image")
     async def edit_image(self, interaction: discord.Interaction, button: Button):
-        class ImageModal(Modal, title="Edit Image"):
-            url = TextInput(label="Image URL", max_length=1024)
+        class ImageModal(Modal):
+            def __init__(self):
+                super().__init__(title="Edit Image")
+                self.url = TextInput(label="Image URL", max_length=1024)
+                self.add_item(self.url)
         modal = ImageModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
@@ -425,8 +427,11 @@ class EmbedBuilderView(View):
 
     @discord.ui.button(label="Thumbnail", style=discord.ButtonStyle.secondary, custom_id="edit_thumbnail")
     async def edit_thumbnail(self, interaction: discord.Interaction, button: Button):
-        class ThumbModal(Modal, title="Edit Thumbnail"):
-            url = TextInput(label="Thumbnail URL", max_length=1024)
+        class ThumbModal(Modal):
+            def __init__(self):
+                super().__init__(title="Edit Thumbnail")
+                self.url = TextInput(label="Thumbnail URL", max_length=1024)
+                self.add_item(self.url)
         modal = ThumbModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
@@ -436,10 +441,15 @@ class EmbedBuilderView(View):
 
     @discord.ui.button(label="Add Field", style=discord.ButtonStyle.secondary, custom_id="add_field")
     async def add_field(self, interaction: discord.Interaction, button: Button):
-        class FieldModal(Modal, title="Add Field"):
-            name = TextInput(label="Field Name", max_length=256)
-            value = TextInput(label="Field Value", style=discord.TextStyle.paragraph, max_length=1024)
-            inline = TextInput(label="Inline? (yes/no)", max_length=3, required=False)
+        class FieldModal(Modal):
+            def __init__(self):
+                super().__init__(title="Add Field")
+                self.name = TextInput(label="Field Name", max_length=256)
+                self.value = TextInput(label="Field Value", style=discord.TextStyle.paragraph, max_length=1024)
+                self.inline = TextInput(label="Inline? (yes/no)", max_length=3, required=False)
+                self.add_item(self.name)
+                self.add_item(self.value)
+                self.add_item(self.inline)
         modal = FieldModal()
         await interaction.response.send_modal(modal)
         await modal.wait()
@@ -483,12 +493,13 @@ class EmbedBuilderView(View):
     @discord.ui.button(label="Send", style=discord.ButtonStyle.success, custom_id="send_embed")
     async def send_embed(self, interaction: discord.Interaction, button: Button):
         # Mostra una select con tutti i canali testuali dove l'utente può scrivere
-        text_channels = [c for c in interaction.guild.text_channels if c.permissions_for(interaction.user).send_messages]
+        text_channels = [c for c in interaction.guild.text_channels if c.permissions_for(interaction.user).send_messages and c.type == discord.ChannelType.text]
         if not text_channels:
             await interaction.response.send_message("No available text channels to send the embed.", ephemeral=True)
             return
         options = [discord.SelectOption(label=ch.name, value=str(ch.id)) for ch in text_channels]
         select = Select(placeholder="Select a channel", options=options, min_values=1, max_values=1)
+
         async def select_callback(select_interaction: discord.Interaction):
             channel_id = int(select.values[0])
             channel = interaction.guild.get_channel(channel_id)
@@ -496,8 +507,12 @@ class EmbedBuilderView(View):
                 await select_interaction.response.send_message("Invalid channel!", ephemeral=True)
                 return
             await channel.send(embed=self.embed)
-            await select_interaction.response.send_message(f"Embed sent in <#{channel_id}>!")
-            await select_interaction.message.delete()
+            await select_interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
+            try:
+                await select_interaction.message.delete()
+            except Exception:
+                pass
+
         select.callback = select_callback
         view = View()
         view.add_item(select)
@@ -786,6 +801,13 @@ async def on_message(message):
         "reason": reason
     }
     modmail_sessions[new_chan.id] = session_obj
+    # Persist the open session to Supabase (Option A: active-only table)
+    try:
+        ok = persist_modmail_session_to_db(session_obj)
+        if not ok:
+            print(f"Warning: failed to persist modmail session for channel {new_chan.id}")
+    except Exception as e:
+        print(f"Exception while persisting modmail session: {e}")
 
     # Send the staff embed into the newly created channel and also log it if configured
     try:
@@ -1233,7 +1255,7 @@ async def embed_command(interaction: discord.Interaction):
             if resp.status_code == 200:
                 presets = resp.json()
     view = EmbedBuilderView(author_id=interaction.user.id, premium=premium, presets=presets)
-    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view)
+    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view, ephemeral=True)
 
 @bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
 @app_commands.describe(amount="Number of messages to delete (max 150)")
@@ -1726,8 +1748,17 @@ async def close(interaction: discord.Interaction, reason: Optional[str] = None):
         await user.send(embed=discord.Embed(title="Your modmail was closed", description=f"A staff member closed your ticket. Reason: {reason or 'N/A'}", color=discord.Color.red()))
     except Exception:
         pass
+    # Remove persisted session from Supabase (Option A) and cleanup in-memory
+    try:
+        try:
+            deleted = delete_modmail_session_from_db(interaction.channel.id)
+            if not deleted:
+                print(f"Warning: failed to delete modmail session row for channel {interaction.channel.id}")
+        except Exception as e:
+            print(f"Exception while deleting modmail session from DB: {e}")
+    except Exception:
+        pass
 
-    # Cleanup
     try:
         del modmail_sessions[interaction.channel.id]
     except Exception:
@@ -2283,15 +2314,6 @@ def load_open_modmail_sessions_from_db():
     except Exception as e:
         print(f"Exception loading modmail sessions: {e}")
         return 0
-
-
-@bot.event
-async def on_ready():
-    try:
-        count = load_open_modmail_sessions_from_db()
-        print(f"Bot ready. Loaded {count} open modmail sessions from Supabase.")
-    except Exception as e:
-        print(f"on_ready error while loading modmail sessions: {e}")
 
 
 @bot.tree.command(name="warn", description="Warn a user")
@@ -3882,6 +3904,17 @@ import os
 
 @bot.event
 async def on_ready():
+    # Load any open modmail sessions persisted in Supabase (best-effort)
+    try:
+        count = 0
+        try:
+            count = load_open_modmail_sessions_from_db()
+        except Exception as e:
+            print(f"Warning: failed to load modmail sessions on startup: {e}")
+        if count:
+            print(f"Loaded {count} open modmail sessions from Supabase.")
+    except Exception:
+        pass
     print(f"Bot is logged in as {bot.user.name} ({bot.user.id})")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="🏥 Maple Communities"))
 
