@@ -331,10 +331,20 @@ class EmbedBuilderView(View):
 
             async def on_submit(self, modal_interaction: discord.Interaction):
                 self.parent_view.embed.title = self.title_input.value
+                # Try to edit the visible builder message first
                 try:
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                        await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
                 except Exception:
+                    pass
+                # Acknowledge the modal interaction so it doesn't fail
+                try:
                     await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+                except Exception:
+                    try:
+                        await modal_interaction.response.defer()
+                    except Exception:
+                        pass
 
         modal = TitleModal(self.embed.title, self)
         await interaction.response.send_modal(modal)
@@ -351,9 +361,17 @@ class EmbedBuilderView(View):
             async def on_submit(self, modal_interaction: discord.Interaction):
                 self.parent_view.embed.description = self.desc.value
                 try:
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                        await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
                 except Exception:
+                    pass
+                try:
                     await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+                except Exception:
+                    try:
+                        await modal_interaction.response.defer()
+                    except Exception:
+                        pass
 
         modal = DescModal(self)
         await interaction.response.send_modal(modal)
@@ -371,9 +389,26 @@ class EmbedBuilderView(View):
             async def on_submit(self, modal_interaction: discord.Interaction):
                 try:
                     self.parent_view.embed.color = discord.Color(int(self.color_input.value.replace('#', ''), 16))
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    try:
+                        if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                            await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
+                    except Exception:
+                        pass
+                    try:
+                        await modal_interaction.response.send_message("Color updated.", ephemeral=True)
+                    except Exception:
+                        try:
+                            await modal_interaction.response.defer()
+                        except Exception:
+                            pass
                 except Exception:
-                    await modal_interaction.response.send_message("Invalid color! Usa formato HEX.", ephemeral=True)
+                    try:
+                        await modal_interaction.response.send_message("Invalid color! Usa formato HEX.", ephemeral=True)
+                    except Exception:
+                        try:
+                            await modal_interaction.response.defer()
+                        except Exception:
+                            pass
 
         current_color = self.embed.color.value if self.embed.color else None
         modal = ColorModal(current_color, self)
@@ -399,9 +434,17 @@ class EmbedBuilderView(View):
                 else:
                     self.parent_view.embed.set_author(name=self.author_input.value)
                 try:
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                        await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
                 except Exception:
+                    pass
+                try:
                     await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+                except Exception:
+                    try:
+                        await modal_interaction.response.defer()
+                    except Exception:
+                        pass
 
         modal = AuthorModal(current_author, current_icon, self)
         await interaction.response.send_modal(modal)
@@ -426,9 +469,17 @@ class EmbedBuilderView(View):
                 else:
                     self.parent_view.embed.set_footer(text=self.footer_input.value)
                 try:
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                        await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
                 except Exception:
+                    pass
+                try:
                     await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+                except Exception:
+                    try:
+                        await modal_interaction.response.defer()
+                    except Exception:
+                        pass
 
         modal = FooterModal(current_footer, current_icon, self)
         await interaction.response.send_modal(modal)
@@ -445,9 +496,17 @@ class EmbedBuilderView(View):
             async def on_submit(self, modal_interaction: discord.Interaction):
                 self.parent_view.embed.set_image(url=self.url.value)
                 try:
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                        await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
                 except Exception:
+                    pass
+                try:
                     await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+                except Exception:
+                    try:
+                        await modal_interaction.response.defer()
+                    except Exception:
+                        pass
 
         modal = ImageModal(self)
         await interaction.response.send_modal(modal)
@@ -464,9 +523,17 @@ class EmbedBuilderView(View):
             async def on_submit(self, modal_interaction: discord.Interaction):
                 self.parent_view.embed.set_thumbnail(url=self.url.value)
                 try:
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                        await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
                 except Exception:
+                    pass
+                try:
                     await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+                except Exception:
+                    try:
+                        await modal_interaction.response.defer()
+                    except Exception:
+                        pass
 
         modal = ThumbModal(self)
         await interaction.response.send_modal(modal)
@@ -488,9 +555,17 @@ class EmbedBuilderView(View):
                 inline_flag = (self.inline.value.lower() == "yes" if self.inline.value else False)
                 self.parent_view.embed.add_field(name=self.name.value, value=self.value.value, inline=inline_flag)
                 try:
-                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                    if hasattr(self.parent_view, 'message') and self.parent_view.message:
+                        await self.parent_view.message.edit(embed=self.parent_view.embed, view=self.parent_view)
                 except Exception:
+                    pass
+                try:
                     await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+                except Exception:
+                    try:
+                        await modal_interaction.response.defer()
+                    except Exception:
+                        pass
 
         modal = FieldModal(self)
         await interaction.response.send_modal(modal)
