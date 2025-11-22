@@ -930,31 +930,81 @@ class ReactionRoleDeleteView(discord.ui.View):
         emoji = mapping.get('emoji')
 
         deleted = supabase_delete_reaction_role_by_id(row_id)
-        # Try to remove reaction from message by searching channels
+        # Try to remove reaction from message by channel_id when available; also attempt to delete the target message
         removed_reaction = False
+        removed_message = False
         if message_id:
-            for ch in self.guild.text_channels:
-                try:
-                    m = await ch.fetch_message(message_id)
-                    # attempt to remove the specific reaction
+            # Prefer using stored channel_id if present in mapping
+            target_channel_id = None
+            try:
+                target_channel_id = int(mapping.get('channel_id')) if mapping.get('channel_id') else None
+            except Exception:
+                target_channel_id = None
+
+            if target_channel_id:
+                ch = self.guild.get_channel(target_channel_id)
+                if ch:
                     try:
-                        # build PartialEmoji if possible
+                        m = await ch.fetch_message(message_id)
+                        # attempt to remove the specific reaction
                         try:
-                            pe = discord.PartialEmoji.from_str(emoji)
-                            await m.clear_reaction(pe if getattr(pe, 'id', None) else emoji)
+                            pe = None
+                            try:
+                                pe = discord.PartialEmoji.from_str(emoji)
+                                await m.clear_reaction(pe if getattr(pe, 'id', None) else emoji)
+                            except Exception:
+                                await m.clear_reaction(emoji)
+                            removed_reaction = True
                         except Exception:
-                            await m.clear_reaction(emoji)
-                        removed_reaction = True
+                            pass
+                        # attempt to delete the message itself
+                        try:
+                            await m.delete()
+                            removed_message = True
+                        except Exception:
+                            pass
                     except Exception:
                         pass
-                    break
+            else:
+                # fallback: search channels (less efficient)
+                for ch in self.guild.text_channels:
+                    try:
+                        m = await ch.fetch_message(message_id)
+                        try:
+                            pe = None
+                            try:
+                                pe = discord.PartialEmoji.from_str(emoji)
+                                await m.clear_reaction(pe if getattr(pe, 'id', None) else emoji)
+                            except Exception:
+                                await m.clear_reaction(emoji)
+                            removed_reaction = True
+                        except Exception:
+                            pass
+                        try:
+                            await m.delete()
+                            removed_message = True
+                        except Exception:
+                            pass
+                        break
+                    except Exception:
+                        continue
+
+        # remove the dropdown (the view) from the interaction message if possible
+        try:
+            # interaction.message refers to the message that contains the select
+            if interaction.message:
+                try:
+                    await interaction.message.edit(view=None)
                 except Exception:
-                    continue
+                    # if editing fails (ephemeral message), ignore
+                    pass
+        except Exception:
+            pass
 
         if deleted:
-            await interaction.response.send_message(f"✅ Mapping removed. Reaction removed from message: {removed_reaction}", ephemeral=True)
+            await interaction.response.send_message(f"✅ Mapping removed. Reaction removed: {removed_reaction}. Message deleted: {removed_message}", ephemeral=True)
         else:
-            await interaction.response.send_message(f"⚠️ Failed to delete mapping from database. Removed reaction: {removed_reaction}", ephemeral=True)
+            await interaction.response.send_message(f"⚠️ Failed to delete mapping from database. Reaction removed: {removed_reaction}. Message deleted: {removed_message}", ephemeral=True)
 
 
 @bot.tree.command(name="reaction-role-delete", description="Delete a reaction-role mapping (select from list)")
@@ -1050,6 +1100,42 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
             pass
     except Exception:
         return
+
+
+@bot.tree.command(name="reaction-role-list", description="List reaction-role mappings for this server")
+async def reaction_role_list(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
+
+    await interaction.response.defer(thinking=True)
+    guild = interaction.guild
+    mappings = supabase_get_reaction_roles_by_guild(guild.id)
+    if not mappings:
+        return await interaction.followup.send("No reaction-role mappings found for this server.", ephemeral=True)
+
+    embed = discord.Embed(title="Reaction Roles", color=discord.Color.blurple())
+    lines = []
+    for m in mappings:
+        mid = m.get('id')
+        emoji = m.get('emoji')
+        role_id = m.get('role_id')
+        role_obj = guild.get_role(int(role_id)) if role_id else None
+        role_label = role_obj.mention if role_obj else f"(missing role {role_id})"
+        channel_part = ""
+        try:
+            ch_id = int(m.get('channel_id')) if m.get('channel_id') else None
+            msg_id = int(m.get('message_id')) if m.get('message_id') else None
+            if ch_id and msg_id:
+                channel_part = f" — [Message](https://discord.com/channels/{guild.id}/{ch_id}/{msg_id})"
+        except Exception:
+            channel_part = ""
+        lines.append(f"`#{mid}` {emoji} → {role_label}{channel_part}")
+
+    chunk = "\n".join(lines[:25])
+    embed.description = chunk
+    if len(lines) > 25:
+        embed.set_footer(text=f"Showing 25 of {len(lines)} mappings")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
