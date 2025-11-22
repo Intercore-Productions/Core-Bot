@@ -2280,11 +2280,13 @@ def delete_modmail_session_from_db(channel_id: int):
 
 
 def load_open_modmail_sessions_from_db():
-    """Load open modmail sessions from Supabase and populate in-memory map.
-    This expects rows where closed_at IS NULL (open sessions).
+    """Load modmail sessions from Supabase and populate in-memory map.
+    This loads rows from the active-only table. We select only the fields we need
+    (guild_id, channel_id, user_id, reason, claimed_by, created_at).
     """
     try:
-        url = f"{SUPABASE_URL}/rest/v1/{MODMAIL_TABLE}?closed_at=is.null"
+        # Select only the columns required; the table is active-only so no closed_at filter
+        url = f"{SUPABASE_URL}/rest/v1/{MODMAIL_TABLE}?select=guild_id,channel_id,user_id,reason,claimed_by,created_at"
         resp = requests.get(url, headers=SUPABASE_HEADERS)
         if resp.status_code != 200:
             print(f"Failed to load modmail sessions: {resp.status_code} {resp.text}")
