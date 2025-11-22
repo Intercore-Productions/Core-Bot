@@ -221,236 +221,6 @@ def has_premium_server():
         return wrapper
     return decorator
 
-
-# --- Reaction role commands ---
-@bot.tree.command(name="reaction-role-create", description="Create a reaction role mapping for a message")
-@app_commands.describe(channel="Channel containing the target message", message_id="ID of the message to attach the reaction to", role="Role to assign", emoji="Emoji to use (unicode or <:name:id>)")
-async def reaction_role_create(interaction: discord.Interaction, channel: discord.TextChannel, message_id: str, role: discord.Role, emoji: str):
-    # Permission check
-    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
-
-    await interaction.response.defer(thinking=True)
-    guild = interaction.guild
-    # Ensure channel is in guild
-    if channel.guild.id != guild.id:
-        return await interaction.followup.send("❌ That channel is not in this server.", ephemeral=True)
-
-    # Limit check (free servers max 10 mappings)
-    cfg = load_config(guild.id)
-    is_premium = str(cfg.get("premium_server", "No")).lower() == "yes" if cfg else False
-    try:
-        existing = supabase_get_reaction_roles_by_guild(guild.id)
-        count = len(existing)
-    except Exception:
-        count = 0
-    if not is_premium and count >= 10:
-        return await interaction.followup.send("❌ Free servers are limited to 10 reaction-role mappings. Upgrade to Premium to add more.", ephemeral=True)
-
-    # Fetch message
-    try:
-        msg = await channel.fetch_message(int(message_id))
-    except Exception:
-        return await interaction.followup.send("❌ Could not find that message in the specified channel.", ephemeral=True)
-
-    # Try to react
-    pe = None
-    try:
-        try:
-            pe = discord.PartialEmoji.from_str(emoji)
-            react_thing = pe if getattr(pe, 'id', None) else emoji
-        except Exception:
-            react_thing = emoji
-        await msg.add_reaction(react_thing)
-    except Exception as e:
-        return await interaction.followup.send(f"❌ Failed to add reaction: {e}", ephemeral=True)
-
-    # Prepare payload for Supabase
-    payload = {
-        "guild_id": str(guild.id),
-        "channel_id": str(channel.id),
-        "message_id": str(message_id),
-        "emoji": emoji,
-        "emoji_id": int(pe.id) if (pe and getattr(pe, 'id', None)) else None,
-        "role_id": str(role.id),
-        "created_by": str(interaction.user.id)
-    }
-
-    inserted = supabase_insert_reaction_role(payload)
-    if not inserted:
-        # Try without channel_id/emoji_id in case table schema differs
-        fallback = payload.copy()
-        fallback.pop('channel_id', None)
-        fallback.pop('emoji_id', None)
-        inserted = supabase_insert_reaction_role(fallback)
-
-    if not inserted:
-        return await interaction.followup.send("⚠️ Reaction added but failed to save mapping to database.", ephemeral=True)
-
-    await interaction.followup.send(f"✅ Reaction role created: {emoji} -> {role.mention} on message {message_id} (channel {channel.mention})", ephemeral=True)
-
-
-class ReactionRoleDeleteView(discord.ui.View):
-    def __init__(self, guild, mappings):
-        super().__init__(timeout=120)
-        self.guild = guild
-        self.mappings = mappings
-
-        options = []
-        for m in mappings:
-            rid = m.get('id')
-            emoji = m.get('emoji')
-            role_obj = guild.get_role(int(m.get('role_id'))) if m.get('role_id') else None
-            role_label = role_obj.name if role_obj else f"<missing role {m.get('role_id')}>"
-            label = f"{emoji} -> {role_label} (msg {m.get('message_id')})"
-            options.append(discord.SelectOption(label=label[:100], value=str(rid)))
-
-        if options:
-            select = discord.ui.Select(placeholder="Select a mapping to delete", min_values=1, max_values=1, options=options)
-            select.callback = self.select_callback
-            self.add_item(select)
-        else:
-            # no mappings, nothing to add
-            pass
-
-    async def select_callback(self, interaction: discord.Interaction):
-        selected = interaction.data['values'][0]
-        # find mapping
-        mapping = None
-        for m in self.mappings:
-            if str(m.get('id')) == str(selected):
-                mapping = m
-                break
-        if not mapping:
-            await interaction.response.send_message('Mapping not found.', ephemeral=True)
-            return
-
-        row_id = mapping.get('id')
-        message_id = int(mapping.get('message_id')) if mapping.get('message_id') else None
-        emoji = mapping.get('emoji')
-
-        deleted = supabase_delete_reaction_role_by_id(row_id)
-        # Try to remove reaction from message by searching channels
-        removed_reaction = False
-        if message_id:
-            for ch in self.guild.text_channels:
-                try:
-                    m = await ch.fetch_message(message_id)
-                    # attempt to remove the specific reaction
-                    try:
-                        # build PartialEmoji if possible
-                        try:
-                            pe = discord.PartialEmoji.from_str(emoji)
-                            await m.clear_reaction(pe if getattr(pe, 'id', None) else emoji)
-                        except Exception:
-                            await m.clear_reaction(emoji)
-                        removed_reaction = True
-                    except Exception:
-                        pass
-                    break
-                except Exception:
-                    continue
-
-        if deleted:
-            await interaction.response.send_message(f"✅ Mapping removed. Reaction removed from message: {removed_reaction}", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"⚠️ Failed to delete mapping from database. Removed reaction: {removed_reaction}", ephemeral=True)
-
-
-@bot.tree.command(name="reaction-role-delete", description="Delete a reaction-role mapping (select from list)")
-async def reaction_role_delete(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
-
-    await interaction.response.defer(thinking=True)
-    guild = interaction.guild
-    mappings = supabase_get_reaction_roles_by_guild(guild.id)
-    if not mappings:
-        return await interaction.followup.send("No reaction-role mappings found for this server.", ephemeral=True)
-
-    view = ReactionRoleDeleteView(guild, mappings)
-    # If view has no selectable items
-    if not view.children:
-        return await interaction.followup.send("No valid mappings to delete.", ephemeral=True)
-
-    await interaction.followup.send("Select a mapping to delete:", view=view, ephemeral=True)
-
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    # Ignore bot reactions
-    if payload.user_id == bot.user.id:
-        return
-    try:
-        guild = bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-        mappings = supabase_get_reaction_roles_by_message(payload.message_id)
-        if not mappings:
-            return
-        # find matching mapping
-        match = None
-        for m in mappings:
-            # compare by emoji_id if present, otherwise by emoji string
-            eid = m.get('emoji_id')
-            if eid and payload.emoji.id and int(eid) == int(payload.emoji.id):
-                match = m
-                break
-            if str(m.get('emoji')) == str(payload.emoji):
-                match = m
-                break
-        if not match:
-            return
-
-        role_id = int(match.get('role_id'))
-        role = guild.get_role(role_id)
-        if not role:
-            return
-        member = guild.get_member(payload.user_id) or await guild.fetch_member(payload.user_id)
-        # Attempt to add role
-        try:
-            await member.add_roles(role, reason="Reaction role")
-        except Exception:
-            pass
-    except Exception:
-        return
-
-
-@bot.event
-async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
-    # Ignore bot
-    if payload.user_id == bot.user.id:
-        return
-    try:
-        guild = bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-        mappings = supabase_get_reaction_roles_by_message(payload.message_id)
-        if not mappings:
-            return
-        match = None
-        for m in mappings:
-            eid = m.get('emoji_id')
-            if eid and payload.emoji.id and int(eid) == int(payload.emoji.id):
-                match = m
-                break
-            if str(m.get('emoji')) == str(payload.emoji):
-                match = m
-                break
-        if not match:
-            return
-        role_id = int(match.get('role_id'))
-        role = guild.get_role(role_id)
-        if not role:
-            return
-        member = guild.get_member(payload.user_id) or await guild.fetch_member(payload.user_id)
-        try:
-            await member.remove_roles(role, reason="Reaction role removed")
-        except Exception:
-            pass
-    except Exception:
-        return
-
 # /purge command
 def has_delete_messages():
     async def predicate(interaction: discord.Interaction):
@@ -1051,6 +821,235 @@ async def on_message(message):
     finally:
         # Done with the DM flow
         modmail_dm_in_progress.discard(message.author.id)
+
+# --- Reaction role commands ---
+@bot.tree.command(name="reaction-role-create", description="Create a reaction role mapping for a message")
+@app_commands.describe(channel="Channel containing the target message", message_id="ID of the message to attach the reaction to", role="Role to assign", emoji="Emoji to use (unicode or <:name:id>)")
+async def reaction_role_create(interaction: discord.Interaction, channel: discord.TextChannel, message_id: str, role: discord.Role, emoji: str):
+    # Permission check
+    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
+
+    await interaction.response.defer(thinking=True)
+    guild = interaction.guild
+    # Ensure channel is in guild
+    if channel.guild.id != guild.id:
+        return await interaction.followup.send("❌ That channel is not in this server.", ephemeral=True)
+
+    # Limit check (free servers max 10 mappings)
+    cfg = load_config(guild.id)
+    is_premium = str(cfg.get("premium_server", "No")).lower() == "yes" if cfg else False
+    try:
+        existing = supabase_get_reaction_roles_by_guild(guild.id)
+        count = len(existing)
+    except Exception:
+        count = 0
+    if not is_premium and count >= 10:
+        return await interaction.followup.send("❌ Free servers are limited to 10 reaction-role mappings. Upgrade to Premium to add more.", ephemeral=True)
+
+    # Fetch message
+    try:
+        msg = await channel.fetch_message(int(message_id))
+    except Exception:
+        return await interaction.followup.send("❌ Could not find that message in the specified channel.", ephemeral=True)
+
+    # Try to react
+    pe = None
+    try:
+        try:
+            pe = discord.PartialEmoji.from_str(emoji)
+            react_thing = pe if getattr(pe, 'id', None) else emoji
+        except Exception:
+            react_thing = emoji
+        await msg.add_reaction(react_thing)
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Failed to add reaction: {e}", ephemeral=True)
+
+    # Prepare payload for Supabase
+    payload = {
+        "guild_id": str(guild.id),
+        "channel_id": str(channel.id),
+        "message_id": str(message_id),
+        "emoji": emoji,
+        "emoji_id": int(pe.id) if (pe and getattr(pe, 'id', None)) else None,
+        "role_id": str(role.id),
+        "created_by": str(interaction.user.id)
+    }
+
+    inserted = supabase_insert_reaction_role(payload)
+    if not inserted:
+        # Try without channel_id/emoji_id in case table schema differs
+        fallback = payload.copy()
+        fallback.pop('channel_id', None)
+        fallback.pop('emoji_id', None)
+        inserted = supabase_insert_reaction_role(fallback)
+
+    if not inserted:
+        return await interaction.followup.send("⚠️ Reaction added but failed to save mapping to database.", ephemeral=True)
+
+    await interaction.followup.send(f"✅ Reaction role created: {emoji} -> {role.mention} on message {message_id} (channel {channel.mention})", ephemeral=True)
+
+
+class ReactionRoleDeleteView(discord.ui.View):
+    def __init__(self, guild, mappings):
+        super().__init__(timeout=120)
+        self.guild = guild
+        self.mappings = mappings
+
+        options = []
+        for m in mappings:
+            rid = m.get('id')
+            emoji = m.get('emoji')
+            role_obj = guild.get_role(int(m.get('role_id'))) if m.get('role_id') else None
+            role_label = role_obj.name if role_obj else f"<missing role {m.get('role_id')}>"
+            label = f"{emoji} -> {role_label} (msg {m.get('message_id')})"
+            options.append(discord.SelectOption(label=label[:100], value=str(rid)))
+
+        if options:
+            select = discord.ui.Select(placeholder="Select a mapping to delete", min_values=1, max_values=1, options=options)
+            select.callback = self.select_callback
+            self.add_item(select)
+        else:
+            # no mappings, nothing to add
+            pass
+
+    async def select_callback(self, interaction: discord.Interaction):
+        selected = interaction.data['values'][0]
+        # find mapping
+        mapping = None
+        for m in self.mappings:
+            if str(m.get('id')) == str(selected):
+                mapping = m
+                break
+        if not mapping:
+            await interaction.response.send_message('Mapping not found.', ephemeral=True)
+            return
+
+        row_id = mapping.get('id')
+        message_id = int(mapping.get('message_id')) if mapping.get('message_id') else None
+        emoji = mapping.get('emoji')
+
+        deleted = supabase_delete_reaction_role_by_id(row_id)
+        # Try to remove reaction from message by searching channels
+        removed_reaction = False
+        if message_id:
+            for ch in self.guild.text_channels:
+                try:
+                    m = await ch.fetch_message(message_id)
+                    # attempt to remove the specific reaction
+                    try:
+                        # build PartialEmoji if possible
+                        try:
+                            pe = discord.PartialEmoji.from_str(emoji)
+                            await m.clear_reaction(pe if getattr(pe, 'id', None) else emoji)
+                        except Exception:
+                            await m.clear_reaction(emoji)
+                        removed_reaction = True
+                    except Exception:
+                        pass
+                    break
+                except Exception:
+                    continue
+
+        if deleted:
+            await interaction.response.send_message(f"✅ Mapping removed. Reaction removed from message: {removed_reaction}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"⚠️ Failed to delete mapping from database. Removed reaction: {removed_reaction}", ephemeral=True)
+
+
+@bot.tree.command(name="reaction-role-delete", description="Delete a reaction-role mapping (select from list)")
+async def reaction_role_delete(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
+
+    await interaction.response.defer(thinking=True)
+    guild = interaction.guild
+    mappings = supabase_get_reaction_roles_by_guild(guild.id)
+    if not mappings:
+        return await interaction.followup.send("No reaction-role mappings found for this server.", ephemeral=True)
+
+    view = ReactionRoleDeleteView(guild, mappings)
+    # If view has no selectable items
+    if not view.children:
+        return await interaction.followup.send("No valid mappings to delete.", ephemeral=True)
+
+    await interaction.followup.send("Select a mapping to delete:", view=view, ephemeral=True)
+
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    # Ignore bot reactions
+    if payload.user_id == bot.user.id:
+        return
+    try:
+        guild = bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+        mappings = supabase_get_reaction_roles_by_message(payload.message_id)
+        if not mappings:
+            return
+        # find matching mapping
+        match = None
+        for m in mappings:
+            # compare by emoji_id if present, otherwise by emoji string
+            eid = m.get('emoji_id')
+            if eid and payload.emoji.id and int(eid) == int(payload.emoji.id):
+                match = m
+                break
+            if str(m.get('emoji')) == str(payload.emoji):
+                match = m
+                break
+        if not match:
+            return
+
+        role_id = int(match.get('role_id'))
+        role = guild.get_role(role_id)
+        if not role:
+            return
+        member = guild.get_member(payload.user_id) or await guild.fetch_member(payload.user_id)
+        # Attempt to add role
+        try:
+            await member.add_roles(role, reason="Reaction role")
+        except Exception:
+            pass
+    except Exception:
+        return
+
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    # Ignore bot
+    if payload.user_id == bot.user.id:
+        return
+    try:
+        guild = bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+        mappings = supabase_get_reaction_roles_by_message(payload.message_id)
+        if not mappings:
+            return
+        match = None
+        for m in mappings:
+            eid = m.get('emoji_id')
+            if eid and payload.emoji.id and int(eid) == int(payload.emoji.id):
+                match = m
+                break
+            if str(m.get('emoji')) == str(payload.emoji):
+                match = m
+                break
+        if not match:
+            return
+        role_id = int(match.get('role_id'))
+        role = guild.get_role(role_id)
+        if not role:
+            return
+        member = guild.get_member(payload.user_id) or await guild.fetch_member(payload.user_id)
+        try:
+            await member.remove_roles(role, reason="Reaction role removed")
+        except Exception:
+            pass
+    except Exception:
+        return
 
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
