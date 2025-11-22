@@ -1101,7 +1101,6 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     except Exception:
         return
 
-
 @bot.tree.command(name="reaction-role-list", description="List reaction-role mappings for this server")
 async def reaction_role_list(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
