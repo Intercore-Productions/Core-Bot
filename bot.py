@@ -113,6 +113,8 @@ def remove_giveaway_cache_later(message_id, delay=86400):
 
 # Active modmail sessions: {channel_id: {user_id, guild_id, claimed_by}}
 modmail_sessions: Dict[int, Dict] = {}
+# Users currently in the DM modmail flow (to avoid re-entrant on_message handling)
+modmail_dm_in_progress = set()
 
 # Permission check: Create Events
 def has_create_events():
@@ -548,10 +550,11 @@ async def on_message(message):
                 await chan.send(embed=embed)
             except Exception as e:
                 print(f"Failed to forward user DM to staff channel: {e}")
-        try:
-            await message.channel.send("✅ You already have an open modmail ticket. Your message has been forwarded to staff.")
-        except Exception:
-            pass
+        # Do NOT send a confirmation message for every forwarded DM — users can chat freely while ticket is open.
+        return
+
+    # If the user is currently inside the DM flow (prompted), ignore this on_message to avoid re-entrancy
+    if message.author.id in modmail_dm_in_progress:
         return
 
     # Build list of guilds where the bot is present and modmail is enabled
@@ -569,6 +572,8 @@ async def on_message(message):
         await message.channel.send("No servers configured for modmail were found.")
         return
 
+    # Mark user as in-progress so reply messages do not re-trigger the flow
+    modmail_dm_in_progress.add(message.author.id)
     # Ask the user to type the server name (we will pick the best match)
     await message.channel.send(
         "Please type the server name where you want to contact staff (partial name is fine).\n"
@@ -582,7 +587,10 @@ async def on_message(message):
         reply = await bot.wait_for('message', check=check, timeout=120)
         query = reply.content.strip()
     except asyncio.TimeoutError:
-        await message.channel.send("⏰ Timeout. Modmail cancelled.")
+        try:
+            await message.channel.send("⏰ Timeout. Modmail cancelled.")
+        finally:
+            modmail_dm_in_progress.discard(message.author.id)
         return
 
     # If user asked for list, show available candidate servers
@@ -590,12 +598,15 @@ async def on_message(message):
         lines = [f"- {g.name} (ID: {g.id})" for g in candidate_guilds]
         chunk = "\n".join(lines)
         await message.channel.send(f"Available servers:\n{chunk}")
-        await message.channel.send("Please type the server name now. You have 2 minutes.")
+        await message.channel.send(f"Please type the server name now. You have 2 minutes.")
         try:
             reply = await bot.wait_for('message', check=check, timeout=120)
             query = reply.content.strip()
         except asyncio.TimeoutError:
-            await message.channel.send("⏰ Timeout. Modmail cancelled.")
+            try:
+                await message.channel.send("⏰ Timeout. Modmail cancelled.")
+            finally:
+                modmail_dm_in_progress.discard(message.author.id)
             return
 
     # Simple fuzzy match: prefer substring match, otherwise best ratio
@@ -637,7 +648,10 @@ async def on_message(message):
         reason_msg = await bot.wait_for('message', check=check, timeout=120)
         reason = reason_msg.content.strip()
     except asyncio.TimeoutError:
-        await message.channel.send("⏰ Timeout. Modmail cancelled.")
+        try:
+            await message.channel.send("⏰ Timeout. Modmail cancelled.")
+        finally:
+            modmail_dm_in_progress.discard(message.author.id)
         return
 
     # Create staff-only channel in configured category and send embed
@@ -706,7 +720,11 @@ async def on_message(message):
     }
 
     # Confirm to user
-    await message.channel.send(f"✅ Your request has been forwarded to **{chosen_guild.name}** staff. They will reply here soon.")
+    try:
+        await message.channel.send(f"✅ Your request has been forwarded to **{chosen_guild.name}** staff. They will reply here soon.")
+    finally:
+        # Done with the DM flow
+        modmail_dm_in_progress.discard(message.author.id)
 
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
