@@ -615,12 +615,25 @@ class EmbedBuilderView(View):
 
         async def select_callback(select_interaction: discord.Interaction):
             channel_id = int(select.values[0])
-            channel = interaction.guild.get_channel(channel_id)
+            # Use the select interaction's guild (more reliable in modal/select callbacks)
+            guild = select_interaction.guild or (interaction.guild if 'interaction' in locals() else None)
+            channel = guild.get_channel(channel_id) if guild else None
             if not channel or not isinstance(channel, TextChannel):
                 await select_interaction.response.send_message("Invalid channel!", ephemeral=True)
                 return
-            await channel.send(embed=self.embed)
-            await select_interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
+            try:
+                await channel.send(embed=self.embed)
+            except Exception as e:
+                # Likely a permissions error or similar — inform the user
+                try:
+                    await select_interaction.response.send_message(f"❌ Failed to send embed to <#{channel_id}>: {e}", ephemeral=True)
+                except Exception:
+                    pass
+                return
+            try:
+                await select_interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
+            except Exception:
+                pass
             # Delete the original builder message (visible to the user)
             try:
                 if hasattr(self, 'message') and self.message:
