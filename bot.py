@@ -523,6 +523,37 @@ async def on_message(message):
     if message.guild is not None:
         return
 
+    # If the user already has an open modmail session, forward the DM to the existing staff channel
+    existing_session = None
+    for s in modmail_sessions.values():
+        try:
+            if s.get("user_id") == message.author.id:
+                existing_session = s
+                break
+        except Exception:
+            continue
+
+    if existing_session:
+        chan = bot.get_channel(existing_session.get("channel_id"))
+        if chan:
+            try:
+                embed = discord.Embed(
+                    title=f"Message from {message.author.display_name}",
+                    description=message.content or "(embed/attachment)",
+                    color=discord.Color.blue()
+                )
+                embed.set_footer(text=f"{message.author} • {message.author.id}")
+                if message.attachments:
+                    embed.set_image(url=message.attachments[0].url)
+                await chan.send(embed=embed)
+            except Exception as e:
+                print(f"Failed to forward user DM to staff channel: {e}")
+        try:
+            await message.channel.send("✅ You already have an open modmail ticket. Your message has been forwarded to staff.")
+        except Exception:
+            pass
+        return
+
     # Build list of guilds where the bot is present and modmail is enabled
     candidate_guilds = []
     for guild in bot.guilds:
@@ -665,12 +696,13 @@ async def on_message(message):
     except Exception:
         pass
 
-    # Store session
+    # Store session (include initial reason)
     modmail_sessions[new_chan.id] = {
         "user_id": message.author.id,
         "guild_id": chosen_guild.id,
         "channel_id": new_chan.id,
-        "claimed_by": None
+        "claimed_by": None,
+        "reason": reason
     }
 
     # Confirm to user
