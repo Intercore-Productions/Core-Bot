@@ -323,139 +323,177 @@ class EmbedBuilderView(View):
     @discord.ui.button(label="Title", style=discord.ButtonStyle.primary, custom_id="edit_title")
     async def edit_title(self, interaction: discord.Interaction, button: Button):
         class TitleModal(Modal):
-            def __init__(self, current_title):
+            def __init__(self, current_title, parent_view):
                 super().__init__(title="Edit Title")
+                self.parent_view = parent_view
                 self.title_input = TextInput(label="Title", max_length=256, default=current_title or "")
                 self.add_item(self.title_input)
-        modal = TitleModal(self.embed.title)
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                self.parent_view.embed.title = self.title_input.value
+                try:
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+
+        modal = TitleModal(self.embed.title, self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        self.embed.title = modal.title_input.value
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Description", style=discord.ButtonStyle.primary, custom_id="edit_desc")
     async def edit_desc(self, interaction: discord.Interaction, button: Button):
         class DescModal(Modal):
-            def __init__(self):
+            def __init__(self, parent_view):
                 super().__init__(title="Edit Description")
+                self.parent_view = parent_view
                 self.desc = TextInput(label="Description", style=discord.TextStyle.paragraph, max_length=2048)
                 self.add_item(self.desc)
-        modal = DescModal()
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                self.parent_view.embed.description = self.desc.value
+                try:
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+
+        modal = DescModal(self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        self.embed.description = modal.desc.value
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Color", style=discord.ButtonStyle.secondary, custom_id="edit_color")
     async def edit_color(self, interaction: discord.Interaction, button: Button):
         class ColorModal(Modal):
-            def __init__(self, current_color):
+            def __init__(self, current_color, parent_view):
                 super().__init__(title="Edit Color (HEX)")
+                self.parent_view = parent_view
                 hex_val = f"#{current_color:06X}" if isinstance(current_color, int) else (str(current_color) if current_color else "#5865F2")
                 self.color_input = TextInput(label="HEX Color", placeholder="#5865F2", max_length=7, default=hex_val)
                 self.add_item(self.color_input)
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                try:
+                    self.parent_view.embed.color = discord.Color(int(self.color_input.value.replace('#', ''), 16))
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Invalid color! Usa formato HEX.", ephemeral=True)
+
         current_color = self.embed.color.value if self.embed.color else None
-        modal = ColorModal(current_color)
+        modal = ColorModal(current_color, self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        try:
-            self.embed.color = discord.Color(int(modal.color_input.value.replace('#',''), 16))
-        except Exception:
-            await interaction.followup.send("Invalid color! Usa formato HEX.", ephemeral=True)
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Author", style=discord.ButtonStyle.secondary, custom_id="edit_author")
     async def edit_author(self, interaction: discord.Interaction, button: Button):
         current_author = self.embed.author.name if self.embed.author else ""
         current_icon = self.embed.author.icon_url if self.embed.author and self.embed.author.icon_url else ""
         class AuthorModal(Modal):
-            def __init__(self, author, icon):
+            def __init__(self, author, icon, parent_view):
                 super().__init__(title="Edit Author")
+                self.parent_view = parent_view
                 self.author_input = TextInput(label="Author", max_length=256, default=author or "")
                 self.icon_url_input = TextInput(label="Author Icon URL", required=False, default=icon or "")
                 self.add_item(self.author_input)
                 self.add_item(self.icon_url_input)
-        modal = AuthorModal(current_author, current_icon)
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                icon_url = self.icon_url_input.value.strip()
+                if icon_url:
+                    self.parent_view.embed.set_author(name=self.author_input.value, icon_url=icon_url)
+                else:
+                    self.parent_view.embed.set_author(name=self.author_input.value)
+                try:
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+
+        modal = AuthorModal(current_author, current_icon, self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        icon_url = modal.icon_url_input.value.strip()
-        if icon_url:
-            self.embed.set_author(name=modal.author_input.value, icon_url=icon_url)
-        else:
-            self.embed.set_author(name=modal.author_input.value)
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Footer", style=discord.ButtonStyle.secondary, custom_id="edit_footer")
     async def edit_footer(self, interaction: discord.Interaction, button: Button):
         current_footer = self.embed.footer.text if self.embed.footer else ""
         current_icon = self.embed.footer.icon_url if self.embed.footer and self.embed.footer.icon_url else ""
         class FooterModal(Modal):
-            def __init__(self, footer, icon):
+            def __init__(self, footer, icon, parent_view):
                 super().__init__(title="Edit Footer")
+                self.parent_view = parent_view
                 self.footer_input = TextInput(label="Footer", max_length=2048, default=footer or "")
                 self.icon_url_input = TextInput(label="Footer Icon URL", required=False, default=icon or "")
                 self.add_item(self.footer_input)
                 self.add_item(self.icon_url_input)
-        modal = FooterModal(current_footer, current_icon)
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                icon_url = self.icon_url_input.value.strip()
+                if icon_url:
+                    self.parent_view.embed.set_footer(text=self.footer_input.value, icon_url=icon_url)
+                else:
+                    self.parent_view.embed.set_footer(text=self.footer_input.value)
+                try:
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+
+        modal = FooterModal(current_footer, current_icon, self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        icon_url = modal.icon_url_input.value.strip()
-        if icon_url:
-            self.embed.set_footer(text=modal.footer_input.value, icon_url=icon_url)
-        else:
-            self.embed.set_footer(text=modal.footer_input.value)
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Image", style=discord.ButtonStyle.secondary, custom_id="edit_image")
     async def edit_image(self, interaction: discord.Interaction, button: Button):
         class ImageModal(Modal):
-            def __init__(self):
+            def __init__(self, parent_view):
                 super().__init__(title="Edit Image")
+                self.parent_view = parent_view
                 self.url = TextInput(label="Image URL", max_length=1024)
                 self.add_item(self.url)
-        modal = ImageModal()
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                self.parent_view.embed.set_image(url=self.url.value)
+                try:
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+
+        modal = ImageModal(self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        self.embed.set_image(url=modal.url.value)
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Thumbnail", style=discord.ButtonStyle.secondary, custom_id="edit_thumbnail")
     async def edit_thumbnail(self, interaction: discord.Interaction, button: Button):
         class ThumbModal(Modal):
-            def __init__(self):
+            def __init__(self, parent_view):
                 super().__init__(title="Edit Thumbnail")
+                self.parent_view = parent_view
                 self.url = TextInput(label="Thumbnail URL", max_length=1024)
                 self.add_item(self.url)
-        modal = ThumbModal()
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                self.parent_view.embed.set_thumbnail(url=self.url.value)
+                try:
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+
+        modal = ThumbModal(self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        self.embed.set_thumbnail(url=modal.url.value)
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Add Field", style=discord.ButtonStyle.secondary, custom_id="add_field")
     async def add_field(self, interaction: discord.Interaction, button: Button):
         class FieldModal(Modal):
-            def __init__(self):
+            def __init__(self, parent_view):
                 super().__init__(title="Add Field")
+                self.parent_view = parent_view
                 self.name = TextInput(label="Field Name", max_length=256)
                 self.value = TextInput(label="Field Value", style=discord.TextStyle.paragraph, max_length=1024)
                 self.inline = TextInput(label="Inline? (yes/no)", max_length=3, required=False)
                 self.add_item(self.name)
                 self.add_item(self.value)
                 self.add_item(self.inline)
-        modal = FieldModal()
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                inline_flag = (self.inline.value.lower() == "yes" if self.inline.value else False)
+                self.parent_view.embed.add_field(name=self.name.value, value=self.value.value, inline=inline_flag)
+                try:
+                    await modal_interaction.response.edit_message(embed=self.parent_view.embed, view=self.parent_view)
+                except Exception:
+                    await modal_interaction.response.send_message("Embed updated.", ephemeral=True)
+
+        modal = FieldModal(self)
         await interaction.response.send_modal(modal)
-        await modal.wait()
-        await interaction.response.defer()
-        self.embed.add_field(name=modal.name.value, value=modal.value.value, inline=(modal.inline.value.lower() == "yes" if modal.inline.value else False))
-        await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(label="Save Preset", style=discord.ButtonStyle.success, custom_id="save_preset")
     async def save_preset(self, interaction: discord.Interaction, button: Button):
