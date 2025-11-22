@@ -546,6 +546,13 @@ class EmbedBuilderView(View):
                 return
             await channel.send(embed=self.embed)
             await select_interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
+            # Delete the original builder message (visible to the user)
+            try:
+                if hasattr(self, 'message') and self.message:
+                    await self.message.delete()
+            except Exception:
+                pass
+            # Try to delete the ephemeral select message as well (may be no-op)
             try:
                 await select_interaction.message.delete()
             except Exception:
@@ -1293,7 +1300,14 @@ async def embed_command(interaction: discord.Interaction):
             if resp.status_code == 200:
                 presets = resp.json()
     view = EmbedBuilderView(author_id=interaction.user.id, premium=premium, presets=presets)
-    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view, ephemeral=True)
+    # Send the builder visibly (not hidden). We'll delete it after the embed is sent.
+    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view)
+    try:
+        # store the message object on the view so callbacks can delete it later
+        msg = await interaction.original_response()
+        view.message = msg
+    except Exception:
+        pass
 
 @bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
 @app_commands.describe(amount="Number of messages to delete (max 150)")
