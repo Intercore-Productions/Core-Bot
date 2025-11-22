@@ -547,7 +547,16 @@ async def on_message(message):
                 embed.set_footer(text=f"{message.author} • {message.author.id}")
                 if message.attachments:
                     embed.set_image(url=message.attachments[0].url)
-                await chan.send(embed=embed)
+                staff_msg = await chan.send(embed=embed)
+                # react on the staff post to mark it forwarded, and react to the user's DM
+                try:
+                    await staff_msg.add_reaction("✅")
+                except Exception:
+                    pass
+                try:
+                    await message.add_reaction("✅")
+                except Exception:
+                    pass
             except Exception as e:
                 print(f"Failed to forward user DM to staff channel: {e}")
         # Do NOT send a confirmation message for every forwarded DM — users can chat freely while ticket is open.
@@ -556,6 +565,10 @@ async def on_message(message):
     # If the user is currently inside the DM flow (prompted), ignore this on_message to avoid re-entrancy
     if message.author.id in modmail_dm_in_progress:
         return
+
+    # Show a loading embed while we gather configured servers (avoids sending multiple messages)
+    loading_embed = discord.Embed(title="Loading...", description="Searching for servers configured for modmail...", color=discord.Color.gold())
+    loading_msg = await message.channel.send(embed=loading_embed)
 
     # Build list of guilds where the bot is present and modmail is enabled
     candidate_guilds = []
@@ -569,16 +582,23 @@ async def on_message(message):
             continue
 
     if not candidate_guilds:
-        await message.channel.send("No servers configured for modmail were found.")
+        no_embed = discord.Embed(title="No servers found", description="No servers configured for modmail were found.", color=discord.Color.red())
+        try:
+            await loading_msg.edit(embed=no_embed)
+        finally:
+            modmail_dm_in_progress.discard(message.author.id)
         return
 
     # Mark user as in-progress so reply messages do not re-trigger the flow
     modmail_dm_in_progress.add(message.author.id)
-    # Ask the user to type the server name (we will pick the best match)
-    await message.channel.send(
-        "Please type the server name where you want to contact staff (partial name is fine).\n"
-        "You can also type `list` to see available servers. You have 2 minutes."
+    # Edit the loading message into the prompt for server name
+    prompt_embed = discord.Embed(
+        title="Contact Staff",
+        description=("Please type the server name where you want to contact staff (partial name is fine).\n"
+                     "You can also type `list` to see available servers. You have 2 minutes."),
+        color=discord.Color.blurple()
     )
+    await loading_msg.edit(embed=prompt_embed)
 
     def check(m):
         return m.author.id == message.author.id and m.channel.id == message.channel.id
@@ -593,18 +613,22 @@ async def on_message(message):
             modmail_dm_in_progress.discard(message.author.id)
         return
 
-    # If user asked for list, show available candidate servers
+    # If user asked for list, show available candidate servers (edit the loading_msg)
     if query.lower() == 'list':
         lines = [f"- {g.name} (ID: {g.id})" for g in candidate_guilds]
         chunk = "\n".join(lines)
-        await message.channel.send(f"Available servers:\n{chunk}")
-        await message.channel.send(f"Please type the server name now. You have 2 minutes.")
+        list_embed = discord.Embed(title="Available servers", description=chunk, color=discord.Color.blue())
+        await loading_msg.edit(embed=list_embed)
+        # Now prompt for the server name again
+        prompt_again = discord.Embed(title="Type server name", description="Please type the server name now. You have 2 minutes.", color=discord.Color.blurple())
+        await loading_msg.edit(embed=prompt_again)
         try:
             reply = await bot.wait_for('message', check=check, timeout=120)
             query = reply.content.strip()
         except asyncio.TimeoutError:
             try:
-                await message.channel.send("⏰ Timeout. Modmail cancelled.")
+                timeout_embed = discord.Embed(title="Timeout", description="⏰ Timeout. Modmail cancelled.", color=discord.Color.red())
+                await loading_msg.edit(embed=timeout_embed)
             finally:
                 modmail_dm_in_progress.discard(message.author.id)
             return
@@ -636,20 +660,24 @@ async def on_message(message):
 
     chosen_guild = best_guild_match(query, candidate_guilds)
     if not chosen_guild:
-        await message.channel.send(
-            "No server matched your input. Try again with a different name or type `list` to see available servers."
-        )
+        err_embed = discord.Embed(title="No match", description="No server matched your input. Try again with a different name or type `list` to see available servers.", color=discord.Color.red())
+        try:
+            await loading_msg.edit(embed=err_embed)
+        finally:
+            modmail_dm_in_progress.discard(message.author.id)
         return
 
-    # Confirm selection to the user
-    await message.channel.send(f"Selected server: **{chosen_guild.name}**. Now, please type the reason for your request. You have 2 minutes.")
+    # Confirm selection to the user (edit the loading message)
+    selected_embed = discord.Embed(title="Selected server", description=f"Selected server: **{chosen_guild.name}**. Now, please type the reason for your request. You have 2 minutes.", color=discord.Color.green())
+    await loading_msg.edit(embed=selected_embed)
 
     try:
         reason_msg = await bot.wait_for('message', check=check, timeout=120)
         reason = reason_msg.content.strip()
     except asyncio.TimeoutError:
         try:
-            await message.channel.send("⏰ Timeout. Modmail cancelled.")
+            timeout_embed = discord.Embed(title="Timeout", description="⏰ Timeout. Modmail cancelled.", color=discord.Color.red())
+            await loading_msg.edit(embed=timeout_embed)
         finally:
             modmail_dm_in_progress.discard(message.author.id)
         return
@@ -699,29 +727,34 @@ async def on_message(message):
         await message.channel.send("❌ Failed to create a modmail channel in the selected server. Please contact the server staff manually.")
         return
 
-    # Send embed to staff channel
+    # Send embed to staff channel (show username instead of raw ID and ping staff roles)
     embed = discord.Embed(title="📩 New Modmail", color=discord.Color.blurple())
-    embed.add_field(name="User", value=f"{message.author} ({message.author.id})", inline=False)
+    username_tag = f"{message.author.name}#{message.author.discriminator}" if hasattr(message.author, 'discriminator') else str(message.author)
+    embed.add_field(name="User", value=f"{message.author} ({username_tag})", inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
-    embed.add_field(name="DM Channel", value=f"<@{message.author.id}>", inline=False)
+    embed.add_field(name="DM Channel", value=f"{message.author}", inline=False)
     embed.timestamp = discord.utils.utcnow()
-    try:
-        await new_chan.send(embed=embed)
-    except Exception:
-        pass
 
-    # Store session (include initial reason)
-    modmail_sessions[new_chan.id] = {
+    # Store session (include initial reason) and persist to Supabase
+    session_obj = {
         "user_id": message.author.id,
         "guild_id": chosen_guild.id,
         "channel_id": new_chan.id,
         "claimed_by": None,
         "reason": reason
     }
-
-    # Confirm to user
+    modmail_sessions[new_chan.id] = session_obj
     try:
-        await message.channel.send(f"✅ Your request has been forwarded to **{chosen_guild.name}** staff. They will reply here soon.")
+        persisted = persist_modmail_session_to_db(session_obj)
+        if not persisted:
+            print(f"Warning: failed to persist modmail session for channel {new_chan.id}")
+    except Exception:
+        pass
+
+    # Confirm to user (embed)
+    try:
+        confirm_embed = discord.Embed(title="✅ Request sent", description=f"Your request has been forwarded to **{chosen_guild.name}** staff. They will reply here soon.", color=discord.Color.green())
+        await message.channel.send(embed=confirm_embed)
     finally:
         # Done with the DM flow
         modmail_dm_in_progress.discard(message.author.id)
@@ -824,30 +857,6 @@ async def embed_command(interaction: discord.Interaction):
                 presets = resp.json()
     view = EmbedBuilderView(author_id=interaction.user.id, premium=premium, presets=presets)
     await interaction.response.send_message("Create your embed:", embed=view.embed, view=view)
-
-# /premium
-@bot.tree.command(name="premium", description="Toggle premium status for a guild (developers only)")
-@app_commands.describe(guild_id="Guild ID to update", premium="Set premium status: True (Yes) or False (No)")
-async def premium(interaction: discord.Interaction, guild_id: str, premium: bool):
-    allowed_ids = {1099013081683738676, 1044899567822454846}
-    if interaction.user.id not in allowed_ids:
-        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
-        return
-    url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}"
-    resp = requests.get(url, headers=SUPABASE_HEADERS)
-    if resp.status_code != 200 or not resp.json():
-        await interaction.response.send_message("❌ Guild not found in database.", ephemeral=True)
-        return
-    premium_value = "Yes" if premium else "No"
-    payload = {"premium_server": premium_value}
-    patch_url = f"{SUPABASE_URL}/rest/v1/server_config?guild_id=eq.{guild_id}" 
-    patch_headers = SUPABASE_HEADERS.copy()
-    patch_headers["Prefer"] = "return=representation"
-    patch_resp = requests.patch(patch_url, headers=patch_headers, data=json.dumps(payload))
-    if patch_resp.status_code in (200, 204):
-        await interaction.response.send_message(f"✅ Premium status for guild {guild_id} set to {premium_value}.", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"❌ Failed to update premium status: {patch_resp.text}", ephemeral=True)
 
 @bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
 @app_commands.describe(amount="Number of messages to delete (max 150)")
@@ -1343,6 +1352,11 @@ async def close(interaction: discord.Interaction, reason: Optional[str] = None):
 
     # Cleanup
     try:
+        # remove from Supabase if present
+        try:
+            delete_modmail_session_from_db(interaction.channel.id)
+        except Exception:
+            pass
         del modmail_sessions[interaction.channel.id]
     except Exception:
         pass
@@ -1778,6 +1792,7 @@ def check_config_and_log(interaction):
 
 # --- MODLOGS SUPABASE ---
 MODLOGS_TABLE = "modlogs"
+MODMAIL_TABLE = "modmail_sessions"
 
 def get_next_case_number():
     url = f"{SUPABASE_URL}/rest/v1/{MODLOGS_TABLE}?select=case_number&order=case_number.desc&limit=1"
@@ -1816,6 +1831,95 @@ def log_mod_action(guild_id, user_id, action, moderator_id, reason=None):
     resp = requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
 
     return case_number
+
+
+# --- Modmail persistence helpers (Supabase) ---
+def persist_modmail_session_to_db(session: dict):
+    """Insert an open modmail session row into Supabase. Returns True on success."""
+    try:
+        payload = {
+            "guild_id": session.get("guild_id"),
+            "channel_id": session.get("channel_id"),
+            "user_id": session.get("user_id"),
+            "reason": session.get("reason") or "",
+            "claimed_by": session.get("claimed_by")
+        }
+        url = f"{SUPABASE_URL}/rest/v1/{MODMAIL_TABLE}"
+        headers = SUPABASE_HEADERS.copy()
+        headers["Content-Type"] = "application/json"
+        # Use Prefer return=representation to get created row if needed
+        headers["Prefer"] = "return=representation"
+        resp = requests.post(url, headers=headers, data=json.dumps(payload))
+        if resp.status_code in (200, 201):
+            return True
+        else:
+            print(f"Failed to persist modmail session: {resp.status_code} {resp.text}")
+            return False
+    except Exception as e:
+        print(f"Exception persisting modmail session: {e}")
+        return False
+
+
+def delete_modmail_session_from_db(channel_id: int):
+    """Delete modmail session rows matching channel_id."""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/{MODMAIL_TABLE}?channel_id=eq.{channel_id}"
+        headers = SUPABASE_HEADERS.copy()
+        resp = requests.delete(url, headers=headers)
+        if resp.status_code in (200, 204):
+            return True
+        else:
+            print(f"Failed to delete modmail session row: {resp.status_code} {resp.text}")
+            return False
+    except Exception as e:
+        print(f"Exception deleting modmail session: {e}")
+        return False
+
+
+def load_open_modmail_sessions_from_db():
+    """Load open modmail sessions from Supabase and populate in-memory map.
+    This expects rows where closed_at IS NULL (open sessions).
+    """
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/{MODMAIL_TABLE}?closed_at=is.null"
+        resp = requests.get(url, headers=SUPABASE_HEADERS)
+        if resp.status_code != 200:
+            print(f"Failed to load modmail sessions: {resp.status_code} {resp.text}")
+            return 0
+        rows = resp.json()
+        count = 0
+        for r in rows:
+            try:
+                chan_id = int(r.get("channel_id")) if r.get("channel_id") else None
+                if not chan_id:
+                    continue
+                # Verify channel exists
+                ch = bot.get_channel(chan_id)
+                if not ch:
+                    continue
+                modmail_sessions[chan_id] = {
+                    "user_id": int(r.get("user_id")) if r.get("user_id") else None,
+                    "guild_id": int(r.get("guild_id")) if r.get("guild_id") else None,
+                    "channel_id": chan_id,
+                    "claimed_by": r.get("claimed_by"),
+                    "reason": r.get("reason")
+                }
+                count += 1
+            except Exception:
+                continue
+        return count
+    except Exception as e:
+        print(f"Exception loading modmail sessions: {e}")
+        return 0
+
+
+@bot.event
+async def on_ready():
+    try:
+        count = load_open_modmail_sessions_from_db()
+        print(f"Bot ready. Loaded {count} open modmail sessions from Supabase.")
+    except Exception as e:
+        print(f"on_ready error while loading modmail sessions: {e}")
 
 
 @bot.tree.command(name="warn", description="Warn a user")
