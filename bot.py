@@ -584,7 +584,7 @@ async def on_message(message):
     if not candidate_guilds:
         no_embed = discord.Embed(title="No servers found", description="No servers configured for modmail were found.", color=discord.Color.red())
         try:
-            await loading_msg.edit(embed=no_embed)
+            await message.channel.send(embed=no_embed)
         finally:
             modmail_dm_in_progress.discard(message.author.id)
         return
@@ -596,9 +596,10 @@ async def on_message(message):
         title="Contact Staff",
         description=("Please type the server name where you want to contact staff (partial name is fine).\n"
                      "You can also type `list` to see available servers. You have 2 minutes."),
+        # cd: 23378
         color=discord.Color.blurple()
     )
-    await loading_msg.edit(embed=prompt_embed)
+    await message.channel.send(embed=prompt_embed)
 
     def check(m):
         return m.author.id == message.author.id and m.channel.id == message.channel.id
@@ -618,17 +619,17 @@ async def on_message(message):
         lines = [f"- {g.name} (ID: {g.id})" for g in candidate_guilds]
         chunk = "\n".join(lines)
         list_embed = discord.Embed(title="Available servers", description=chunk, color=discord.Color.blue())
-        await loading_msg.edit(embed=list_embed)
+        await message.channel.send(embed=list_embed)
         # Now prompt for the server name again
         prompt_again = discord.Embed(title="Type server name", description="Please type the server name now. You have 2 minutes.", color=discord.Color.blurple())
-        await loading_msg.edit(embed=prompt_again)
+        await message.channel.send(embed=prompt_again)
         try:
             reply = await bot.wait_for('message', check=check, timeout=120)
             query = reply.content.strip()
         except asyncio.TimeoutError:
             try:
                 timeout_embed = discord.Embed(title="Timeout", description="⏰ Timeout. Modmail cancelled.", color=discord.Color.red())
-                await loading_msg.edit(embed=timeout_embed)
+                await message.channel.send(embed=timeout_embed)
             finally:
                 modmail_dm_in_progress.discard(message.author.id)
             return
@@ -662,14 +663,14 @@ async def on_message(message):
     if not chosen_guild:
         err_embed = discord.Embed(title="No match", description="No server matched your input. Try again with a different name or type `list` to see available servers.", color=discord.Color.red())
         try:
-            await loading_msg.edit(embed=err_embed)
+            await message.channel.send(embed=err_embed)
         finally:
             modmail_dm_in_progress.discard(message.author.id)
         return
 
     # Confirm selection to the user (edit the loading message)
     selected_embed = discord.Embed(title="Selected server", description=f"Selected server: **{chosen_guild.name}**. Now, please type the reason for your request. You have 2 minutes.", color=discord.Color.green())
-    await loading_msg.edit(embed=selected_embed)
+    await message.channel.send(embed=selected_embed)
 
     try:
         reason_msg = await bot.wait_for('message', check=check, timeout=120)
@@ -677,7 +678,7 @@ async def on_message(message):
     except asyncio.TimeoutError:
         try:
             timeout_embed = discord.Embed(title="Timeout", description="⏰ Timeout. Modmail cancelled.", color=discord.Color.red())
-            await loading_msg.edit(embed=timeout_embed)
+            await message.channel.send(embed=timeout_embed)
         finally:
             modmail_dm_in_progress.discard(message.author.id)
         return
@@ -744,12 +745,33 @@ async def on_message(message):
         "reason": reason
     }
     modmail_sessions[new_chan.id] = session_obj
+
+    # Send the staff embed into the newly created channel and also log it if configured
     try:
-        persisted = persist_modmail_session_to_db(session_obj)
-        if not persisted:
-            print(f"Warning: failed to persist modmail session for channel {new_chan.id}")
-    except Exception:
-        pass
+        # Build staff role pings if available
+        pings = ""
+        try:
+            if staff_role_ids:
+                pings = " ".join(f"<@&{int(rid)}" + ">" for rid in staff_role_ids)
+        except Exception:
+            pings = ""
+
+        if pings:
+            await new_chan.send(content=pings, embed=embed)
+        else:
+            await new_chan.send(embed=embed)
+
+        # Also send to configured modmail log channel if present
+        try:
+            log_id = int(cfg.get("modmail_log_channel_id")) if cfg and cfg.get("modmail_log_channel_id") else None
+            if log_id:
+                log_ch = chosen_guild.get_channel(log_id)
+                if log_ch:
+                    await log_ch.send(embed=embed)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"Failed to post staff modmail embed: {e}")
 
     # Confirm to user (embed)
     try:
@@ -1352,11 +1374,6 @@ async def close(interaction: discord.Interaction, reason: Optional[str] = None):
 
     # Cleanup
     try:
-        # remove from Supabase if present
-        try:
-            delete_modmail_session_from_db(interaction.channel.id)
-        except Exception:
-            pass
         del modmail_sessions[interaction.channel.id]
     except Exception:
         pass
