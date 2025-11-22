@@ -6,6 +6,7 @@ from discord.ui import View, Select, select, Button
 import requests
 import json
 import os
+import io
 import asyncio
 import aiohttp
 import wavelink
@@ -109,6 +110,9 @@ def remove_giveaway_cache_later(message_id, delay=86400):
     t = threading.Timer(delay, remove)
     t.daemon = True
     t.start()
+
+# Active modmail sessions: {channel_id: {user_id, guild_id, claimed_by}}
+modmail_sessions: Dict[int, Dict] = {}
 
 # Permission check: Create Events
 def has_create_events():
@@ -482,55 +486,121 @@ class ModmailServerSelect(View):
 
 @bot.event
 async def on_message(message):
-    # Only handle DMs to the bot, not guild messages or bot messages
-    if message.guild is not None or message.author.bot:
+    # Ignore bot messages
+    if message.author.bot:
         return
 
-    # Find mutual guilds with modmail enabled
-    mutual_guilds = []
+    # If message is in a modmail staff channel, forward to user
+    if message.guild is not None:
+        session = modmail_sessions.get(message.channel.id)
+        if session:
+            user_id = session.get("user_id")
+            try:
+                user = await bot.fetch_user(user_id)
+                embed = discord.Embed(
+                    title=f"Reply from {message.author.display_name}",
+                    description=message.content or "(embed/attachment)",
+                    color=discord.Color.blue()
+                )
+                embed.set_footer(text=f"{message.author} • {message.author.id}")
+                # include attachments if any (first one)
+                if message.attachments:
+                    embed.set_image(url=message.attachments[0].url)
+                await user.send(embed=embed)
+                try:
+                    await message.add_reaction("✅")
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"Failed to forward staff message to user {user_id}: {e}")
+                try:
+                    await message.channel.send("❌ Failed to send DM to the user.")
+                except Exception:
+                    pass
+            return
+
+    # Only handle DMs to the bot from users (not in guilds)
+    if message.guild is not None:
+        return
+
+    # Build list of guilds where the bot is present and modmail is enabled
+    candidate_guilds = []
     for guild in bot.guilds:
         try:
-            member = await guild.fetch_member(message.author.id)
-            config = load_config(guild.id)
-            if config and config.get("modmail_enabled") == "TRUE":
-                mutual_guilds.append(guild)
-        except discord.NotFound:
-            continue  # User not in this guild
-        except discord.Forbidden:
-            continue  # Bot lacks permissions
+            cfg = load_config(guild.id)
+            if cfg and str(cfg.get("modmail_enabled")).lower() in ("true", "1", "yes"):
+                candidate_guilds.append(guild)
         except Exception as e:
-            print(f"Error fetching member in guild {guild.name}: {e}")
+            print(f"Error loading config for guild {guild.name}: {e}")
             continue
 
-    if not mutual_guilds:
-        await message.channel.send("You do not share any server with modmail enabled with this bot.")
+    if not candidate_guilds:
+        await message.channel.send("No servers configured for modmail were found.")
         return
 
-    embed = discord.Embed(
-        title="Modmail Support",
-        description="Select the server you want to contact the staff of.",
-        color=discord.Color.blurple()
+    # Ask the user to type the server name (we will pick the best match)
+    await message.channel.send(
+        "Please type the server name where you want to contact staff (partial name is fine).\n"
+        "You can also type `list` to see available servers. You have 2 minutes."
     )
-    view = ModmailServerSelect(message.author, mutual_guilds)
-    await message.channel.send(embed=embed, view=view)
-    await view.wait()
-
-    if view.selected_guild_id is None:
-        await message.channel.send("No server selected. Modmail cancelled.")
-        return
-
-    # Next step: ask for reason (to be implemented in step 2)
-    await message.channel.send(f"Server selected: <t:{view.selected_guild_id}>.")
-
-        # After server selection, ask for the reason with a message
-    if view.selected_guild_id is None:
-        await message.channel.send("No server selected. Modmail cancelled.")
-        return
-
-    await message.channel.send("Please type the reason for your request. You have 2 minutes:")
 
     def check(m):
         return m.author.id == message.author.id and m.channel.id == message.channel.id
+
+    try:
+        reply = await bot.wait_for('message', check=check, timeout=120)
+        query = reply.content.strip()
+    except asyncio.TimeoutError:
+        await message.channel.send("⏰ Timeout. Modmail cancelled.")
+        return
+
+    # If user asked for list, show available candidate servers
+    if query.lower() == 'list':
+        lines = [f"- {g.name} (ID: {g.id})" for g in candidate_guilds]
+        chunk = "\n".join(lines)
+        await message.channel.send(f"Available servers:\n{chunk}")
+        await message.channel.send("Please type the server name now. You have 2 minutes.")
+        try:
+            reply = await bot.wait_for('message', check=check, timeout=120)
+            query = reply.content.strip()
+        except asyncio.TimeoutError:
+            await message.channel.send("⏰ Timeout. Modmail cancelled.")
+            return
+
+    # Simple fuzzy match: prefer substring match, otherwise best ratio
+    import difflib
+
+    def best_guild_match(query_str, guilds):
+        query_low = query_str.lower()
+        # exact or substring matches first
+        substring_matches = [g for g in guilds if query_low in g.name.lower()]
+        if substring_matches:
+            # if multiple, pick the longest name match or highest ratio
+            if len(substring_matches) == 1:
+                return substring_matches[0]
+            ratios = [(difflib.SequenceMatcher(None, query_low, g.name.lower()).ratio(), g) for g in substring_matches]
+            ratios.sort(reverse=True, key=lambda x: x[0])
+            return ratios[0][1]
+
+        # fallback to close match by ratio
+        names = [g.name for g in guilds]
+        matches = difflib.get_close_matches(query_str, names, n=1, cutoff=0.4)
+        if matches:
+            # find guild object
+            for g in guilds:
+                if g.name == matches[0]:
+                    return g
+        return None
+
+    chosen_guild = best_guild_match(query, candidate_guilds)
+    if not chosen_guild:
+        await message.channel.send(
+            "No server matched your input. Try again with a different name or type `list` to see available servers."
+        )
+        return
+
+    # Confirm selection to the user
+    await message.channel.send(f"Selected server: **{chosen_guild.name}**. Now, please type the reason for your request. You have 2 minutes.")
 
     try:
         reason_msg = await bot.wait_for('message', check=check, timeout=120)
@@ -539,8 +609,72 @@ async def on_message(message):
         await message.channel.send("⏰ Timeout. Modmail cancelled.")
         return
 
-    # Next step: create staff channel and send embed (to be implemented in step 3)
-    await message.channel.send(f"Reason received: `{reason}`. (Next: create staff channel...)")
+    # Create staff-only channel in configured category and send embed
+    cfg = load_config(chosen_guild.id)
+    category = None
+    try:
+        cat_id = int(cfg.get("modmail_category_id")) if cfg and cfg.get("modmail_category_id") else None
+        if cat_id:
+            category = chosen_guild.get_channel(cat_id)
+    except Exception:
+        category = None
+
+    # Prepare overwrites
+    overwrites = {chosen_guild.default_role: discord.PermissionOverwrite(view_channel=False)}
+    staff_role_ids = []
+    try:
+        raw = cfg.get("modmail_staff_role_ids") if cfg else None
+        if raw:
+            # stored as JSON array or comma-separated
+            try:
+                staff_role_ids = json.loads(raw)
+            except Exception:
+                staff_role_ids = [s.strip() for s in str(raw).split(',') if s.strip()]
+        for rid in staff_role_ids:
+            try:
+                role = chosen_guild.get_role(int(rid))
+                if role:
+                    overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_messages=True)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # Always allow admins and the bot
+    for member in chosen_guild.members:
+        if member.guild_permissions.administrator:
+            overwrites[member] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+    overwrites[chosen_guild.me] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+    chan_name = f"modmail-{message.author.id}"
+    try:
+        new_chan = await chosen_guild.create_text_channel(name=chan_name, category=category, overwrites=overwrites)
+    except Exception as e:
+        print(f"Failed to create modmail channel in {chosen_guild.name}: {e}")
+        await message.channel.send("❌ Failed to create a modmail channel in the selected server. Please contact the server staff manually.")
+        return
+
+    # Send embed to staff channel
+    embed = discord.Embed(title="📩 New Modmail", color=discord.Color.blurple())
+    embed.add_field(name="User", value=f"{message.author} ({message.author.id})", inline=False)
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="DM Channel", value=f"<@{message.author.id}>", inline=False)
+    embed.timestamp = discord.utils.utcnow()
+    try:
+        await new_chan.send(embed=embed)
+    except Exception:
+        pass
+
+    # Store session
+    modmail_sessions[new_chan.id] = {
+        "user_id": message.author.id,
+        "guild_id": chosen_guild.id,
+        "channel_id": new_chan.id,
+        "claimed_by": None
+    }
+
+    # Confirm to user
+    await message.channel.send(f"✅ Your request has been forwarded to **{chosen_guild.name}** staff. They will reply here soon.")
 
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
@@ -988,6 +1122,184 @@ async def modmail(
     headers["Content-Type"] = "application/json"
     requests.patch(patch_url, headers=headers, data=json.dumps(payload))
     await interaction.response.send_message("✅ Modmail configured and enabled!", ephemeral=True)
+
+
+# /claim
+@bot.tree.command(name="claim", description="Claim a modmail ticket (use inside ticket channel)")
+async def claim(interaction: discord.Interaction):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        return await interaction.response.send_message("This command must be used inside a modmail channel.", ephemeral=True)
+    session = modmail_sessions.get(interaction.channel.id)
+    if not session:
+        return await interaction.response.send_message("This channel is not an active modmail session.", ephemeral=True)
+    # Permission: check if user has one of the staff roles or admin
+    cfg = load_config(interaction.guild.id)
+    allowed = False
+    if interaction.user.guild_permissions.administrator:
+        allowed = True
+    else:
+        raw = cfg.get("modmail_staff_role_ids") if cfg else None
+        staff_ids = []
+        try:
+            if raw:
+                staff_ids = json.loads(raw)
+        except Exception:
+            staff_ids = [s.strip() for s in str(raw).split(',') if s.strip()]
+        for rid in staff_ids:
+            try:
+                if int(rid) in [r.id for r in interaction.user.roles]:
+                    allowed = True
+                    break
+            except Exception:
+                continue
+    if not allowed:
+        return await interaction.response.send_message("You are not authorized to claim this ticket.", ephemeral=True)
+    session['claimed_by'] = interaction.user.id
+    await interaction.response.send_message(f"✅ Ticket claimed by {interaction.user.mention}.")
+    # Notify user
+    try:
+        user = await bot.fetch_user(session['user_id'])
+        embed = discord.Embed(title="Your ticket was claimed", description=f"{interaction.user} has claimed your modmail and will assist you.")
+        await user.send(embed=embed)
+    except Exception:
+        pass
+
+
+# /unclaim
+@bot.tree.command(name="unclaim", description="Unclaim a modmail ticket (use inside ticket channel)")
+async def unclaim(interaction: discord.Interaction):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        return await interaction.response.send_message("This command must be used inside a modmail channel.", ephemeral=True)
+    session = modmail_sessions.get(interaction.channel.id)
+    if not session:
+        return await interaction.response.send_message("This channel is not an active modmail session.", ephemeral=True)
+    cfg = load_config(interaction.guild.id)
+    allowed = interaction.user.guild_permissions.administrator
+    if not allowed:
+        raw = cfg.get("modmail_staff_role_ids") if cfg else None
+        staff_ids = []
+        try:
+            if raw:
+                staff_ids = json.loads(raw)
+        except Exception:
+            staff_ids = [s.strip() for s in str(raw).split(',') if s.strip()]
+        for rid in staff_ids:
+            try:
+                if int(rid) in [r.id for r in interaction.user.roles]:
+                    allowed = True
+                    break
+            except Exception:
+                continue
+    if not allowed:
+        return await interaction.response.send_message("You are not authorized to unclaim this ticket.", ephemeral=True)
+    session['claimed_by'] = None
+    await interaction.response.send_message("✅ Ticket unclaimed.")
+    # Notify user
+    try:
+        user = await bot.fetch_user(session['user_id'])
+        embed = discord.Embed(title="Your ticket was unclaimed", description=f"{interaction.user} has unclaimed this ticket. Another staff member will assist you soon.")
+        await user.send(embed=embed)
+    except Exception:
+        pass
+
+
+# /close
+@bot.tree.command(name="close", description="Close the modmail ticket and post transcript")
+@app_commands.describe(reason="Optional reason for closing the ticket")
+async def close(interaction: discord.Interaction, reason: Optional[str] = None):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        return await interaction.response.send_message("This command must be used inside a modmail channel.", ephemeral=True)
+    session = modmail_sessions.get(interaction.channel.id)
+    if not session:
+        return await interaction.response.send_message("This channel is not an active modmail session.", ephemeral=True)
+    cfg = load_config(interaction.guild.id)
+    # permission check
+    allowed = interaction.user.guild_permissions.administrator
+    if not allowed:
+        raw = cfg.get("modmail_staff_role_ids") if cfg else None
+        staff_ids = []
+        try:
+            if raw:
+                staff_ids = json.loads(raw)
+        except Exception:
+            staff_ids = [s.strip() for s in str(raw).split(',') if s.strip()]
+        for rid in staff_ids:
+            try:
+                if int(rid) in [r.id for r in interaction.user.roles]:
+                    allowed = True
+                    break
+            except Exception:
+                continue
+    if not allowed:
+        return await interaction.response.send_message("You are not authorized to close this ticket.", ephemeral=True)
+
+    await interaction.response.send_message("Closing ticket and generating transcript...", ephemeral=True)
+
+    # Fetch transcript
+    msgs = []
+    try:
+        async for m in interaction.channel.history(limit=500, oldest_first=True):
+            timestamp = m.created_at.isoformat()
+            author = f"{m.author} ({m.author.id})"
+            content = m.content or ""
+            msgs.append(f"[{timestamp}] {author}: {content}")
+            for att in m.attachments:
+                msgs.append(f"[{timestamp}] {author}: [Attachment] {att.url}")
+    except Exception as e:
+        print(f"Error fetching history: {e}")
+
+    transcript_text = "\n".join(msgs) or "(no messages)"
+    transcript_bytes = transcript_text.encode('utf-8')
+    file = discord.File(fp=io.BytesIO(transcript_bytes), filename=f"modmail-transcript-{session['user_id']}-{interaction.channel.id}.txt")
+
+    # Send to log channel
+    log_ch = None
+    try:
+        log_id = int(cfg.get("modmail_log_channel_id")) if cfg and cfg.get("modmail_log_channel_id") else None
+        if log_id:
+            log_ch = interaction.guild.get_channel(log_id)
+    except Exception:
+        log_ch = None
+
+    summary = discord.Embed(title="Modmail Closed", color=discord.Color.red())
+    summary.add_field(name="User", value=f"<@{session['user_id']}>", inline=False)
+    summary.add_field(name="Closed by", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+    if reason:
+        summary.add_field(name="Reason", value=reason, inline=False)
+    summary.timestamp = discord.utils.utcnow()
+
+    if log_ch:
+        try:
+            await log_ch.send(embed=summary, file=file)
+        except Exception:
+            try:
+                await interaction.channel.send("Failed to send transcript to log channel.")
+            except Exception:
+                pass
+    else:
+        # fallback: send in current channel before deletion
+        try:
+            await interaction.channel.send(embed=summary)
+            await interaction.channel.send(file=file)
+        except Exception:
+            pass
+
+    # Notify user
+    try:
+        user = await bot.fetch_user(session['user_id'])
+        await user.send(embed=discord.Embed(title="Your modmail was closed", description=f"A staff member closed your ticket. Reason: {reason or 'N/A'}", color=discord.Color.red()))
+    except Exception:
+        pass
+
+    # Cleanup
+    try:
+        del modmail_sessions[interaction.channel.id]
+    except Exception:
+        pass
+    try:
+        await interaction.channel.delete(reason=f"Modmail closed by {interaction.user}")
+    except Exception:
+        pass
 
 # /game-queue
 @bot.tree.command(name="game-queue", description="Show the current server queue.")
