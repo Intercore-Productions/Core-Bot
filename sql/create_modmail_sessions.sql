@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS modmail_sessions (
     user_id BIGINT,
     reason TEXT,
     claimed_by BIGINT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_modmail_sessions_guild_id ON modmail_sessions (guild_id);
