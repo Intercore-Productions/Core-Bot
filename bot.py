@@ -1453,6 +1453,44 @@ async def embed_command(interaction: discord.Interaction):
     except Exception:
         pass
 
+
+@bot.tree.command(name="help", description="Show help for available commands")
+async def help_command(interaction: discord.Interaction):
+    """Structured help command that lists commands, required permissions and a short description."""
+    embed = discord.Embed(title="Core Bot — Help", description="List of available commands and required permissions.", color=discord.Color.blue())
+
+    embed.add_field(name="General", value=(
+        "/help — Show this help (no permissions)\n"
+        "/embed — Create a custom embed (Premium required on some servers)\n"
+        "/suggest — Send a suggestion (no permissions)"
+    ), inline=False)
+
+    embed.add_field(name="Moderation", value=(
+        "/warn <user> <reason> — Warn a user (Mute Members required)\n"
+        "/unwarn <user> <reason> — Remove a warning (Mute Members required)\n"
+        "/mute <user> <reason> — Timeout a user (Mute Members required)\n"
+        "/purge <amount> — Delete messages (Manage Messages required)"
+    ), inline=False)
+
+    embed.add_field(name="Modmail / Tickets", value=(
+        "DM the bot to open a modmail ticket — no permission required for users.\n"
+        "Staff commands inside tickets: /claim, /unclaim, /close — Staff roles or Admin required."
+    ), inline=False)
+
+    embed.add_field(name="Reaction Roles", value=(
+        "/reaction-role-create — Create a reaction-role mapping (Manage Roles required)\n"
+        "/reaction-role-delete — Remove a mapping (Manage Roles required)\n"
+        "/reaction-role-list — List mappings (Manage Roles required)"
+    ), inline=False)
+
+    embed.add_field(name="Utilities", value=(
+        "/game-queue — Show server queue (Premium)\n"
+        "/game-settings — Update server settings (Manage Server + Premium)"
+    ), inline=False)
+
+    embed.set_footer(text="Use commands responsibly. Some commands require server configuration.")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 @bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
 @app_commands.describe(amount="Number of messages to delete (max 150)")
 @has_premium_server()
@@ -3803,34 +3841,66 @@ async def send_webhook_embed(guild_id, embed, file=None):
 # --- MEMBER JOIN ---
 @bot.event
 async def on_member_join(member):
-    config = load_config(member.guild.id)
+    """Handle member joins: send webhook notification (if configured) and a welcome embed in the configured channel.
+    This consolidates both behaviors into a single event handler and adds robust error handling.
+    """
+    try:
+        config = load_config(member.guild.id)
+    except Exception as e:
+        print(f"Error loading config for guild {getattr(member.guild, 'id', None)}: {e}")
+        return
+
     if not config:
         return
-    if not config.get("webhook_url"):
-        return
-    embed = discord.Embed(title="👤 Member Joined", color=discord.Color.green())
-    embed.add_field(name="User", value=f"{member.mention} ({member.id})", inline=False)
-    embed.set_thumbnail(url=member.avatar.url if member.avatar else discord.Embed.Empty)
-    embed.timestamp = discord.utils.utcnow()
-    await send_webhook_embed(member.guild.id, embed)
-    
-@bot.event    
-async def on_member_join(member):
-    config = load_config(member.guild.id)
-    if not config or not config.get("welcoming_channel") or not config.get("welcome_text"):
-        return
-    channel = member.guild.get_channel(int(config["welcoming_channel"]))
-    if not channel:
-        return
-    welcome_text = config["welcome_text"].replace("{user}", member.mention)
-    embed = discord.Embed(
-    title="👋 Welcome {}".format(member.display_name),
-    description=welcome_text,
-    color=discord.Color.from_rgb(114, 137, 218)
-)
-    
-    embed.set_thumbnail(url=member.display_avatar.url)
-    await channel.send(embed=embed)   
+
+    # 1) Webhook notification (if configured)
+    try:
+        webhook_url = config.get("webhook_url")
+        if webhook_url:
+            embed = discord.Embed(title="👤 Member Joined", color=discord.Color.green())
+            embed.add_field(name="User", value=f"{member.mention} ({member.id})", inline=False)
+            # prefer display avatar; fallback to avatar
+            thumb = None
+            try:
+                thumb = member.display_avatar.url
+            except Exception:
+                try:
+                    thumb = member.avatar.url if member.avatar else None
+                except Exception:
+                    thumb = None
+            if thumb:
+                embed.set_thumbnail(url=thumb)
+            embed.timestamp = discord.utils.utcnow()
+            await send_webhook_embed(member.guild.id, embed)
+    except Exception as e:
+        print(f"Error sending join webhook for guild {member.guild.id}: {e}")
+
+    # 2) Welcome message in server channel
+    try:
+        welcome_channel = config.get("welcoming_channel")
+        welcome_text = config.get("welcome_text")
+        if welcome_channel and welcome_text:
+            try:
+                channel = member.guild.get_channel(int(welcome_channel))
+            except Exception:
+                channel = None
+            if channel and isinstance(channel, discord.TextChannel):
+                try:
+                    text = str(welcome_text).replace("{user}", member.mention)
+                    embed = discord.Embed(
+                        title=f"👋 Welcome {member.display_name}",
+                        description=text,
+                        color=discord.Color.from_rgb(114, 137, 218)
+                    )
+                    try:
+                        embed.set_thumbnail(url=member.display_avatar.url)
+                    except Exception:
+                        pass
+                    await channel.send(embed=embed)
+                except Exception as e:
+                    print(f"Failed to send welcome embed in guild {member.guild.id}, channel {welcome_channel}: {e}")
+    except Exception as e:
+        print(f"Error processing welcome channel for guild {member.guild.id}: {e}")
     
 # --- MEMBER LEAVE ---
 @bot.event
