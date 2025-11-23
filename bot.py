@@ -31,6 +31,17 @@ SUPABASE_HEADERS = {
     "Content-Type": "application/json"
 }
 
+# --- redact secret ---
+def redact_secret(value: str, show_start: int = 6, show_end: int = 4) -> str:
+    try:
+        if not value or not isinstance(value, str):
+            return "<redacted>"
+        if len(value) <= (show_start + show_end + 4):
+            return "<redacted>"
+        return f"{value[:show_start]}...{value[-show_end:]}"
+    except Exception:
+        return "<redacted>"
+
 # --- Database Function ---
 def init_db():
     pass 
@@ -2231,7 +2242,8 @@ async def server_log(interaction: discord.Interaction):
         return
 
     embed = discord.Embed(title="✅ Core Webhook Created", color=discord.Color.green())
-    embed.add_field(name="Webhook URL", value=f"`{webhook.url}`", inline=False)
+    redacted = redact_secret(webhook.url)
+    embed.add_field(name="Webhook URL", value=f"`{redacted}`", inline=False)
     embed.add_field(name="Instructions", value="Use this webhook for server logs.", inline=False)
     embed.set_thumbnail(url=avatar_url)
     await interaction.followup.send(embed=embed, ephemeral=True)
@@ -2263,9 +2275,10 @@ async def maple_log(interaction: discord.Interaction, channel: TextChannel):
         color=discord.Color.green()
     )
 
+    redacted_wh = redact_secret(webhook.url)
     embed.add_field(
         name="🔗 Webhook URL",
-        value=f"```{webhook.url}```",
+        value=f"```{redacted_wh}```",
         inline=False
     )
 
