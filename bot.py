@@ -605,51 +605,107 @@ class EmbedBuilderView(View):
 
     @discord.ui.button(label="Send", style=discord.ButtonStyle.success, custom_id="send_embed")
     async def send_embed(self, interaction: discord.Interaction, button: Button):
-        # Mostra una select con tutti i canali testuali dove l'utente può scrivere
-        text_channels = [c for c in interaction.guild.text_channels if c.permissions_for(interaction.user).send_messages and c.type == discord.ChannelType.text]
-        if not text_channels:
-            await interaction.response.send_message("No available text channels to send the embed.", ephemeral=True)
-            return
-        options = [discord.SelectOption(label=ch.name, value=str(ch.id)) for ch in text_channels]
-        select = Select(placeholder="Select a channel", options=options, min_values=1, max_values=1)
+        # New flow: ask the user to reply with the channel link where the embed should be sent.
+        prompt_embed = discord.Embed(
+            title="Where should I send this embed?",
+            description=("Please reply in this channel with the channel link or mention where you want me to send the embed.\n"
+                         "Example: `#general`\n"
+                         "You have 2 minutes to reply."),
+            color=discord.Color.blurple()
+        )
 
-        async def select_callback(select_interaction: discord.Interaction):
-            channel_id = int(select.values[0])
-            # Use the select interaction's guild (more reliable in modal/select callbacks)
-            guild = select_interaction.guild or (interaction.guild if 'interaction' in locals() else None)
-            channel = guild.get_channel(channel_id) if guild else None
-            if not channel or not isinstance(channel, TextChannel):
-                await select_interaction.response.send_message("Invalid channel!", ephemeral=True)
-                return
+        # Respond to the button interaction with the prompt (visible). This is the interaction response.
+        try:
+            await interaction.response.send_message(embed=prompt_embed)
+            prompt_msg = await interaction.original_response()
+        except Exception:
+            # If we can't send the prompt via interaction, attempt a fallback send in the channel
             try:
-                await channel.send(embed=self.embed)
+                prompt_msg = await interaction.channel.send(embed=prompt_embed)
             except Exception as e:
-                # Likely a permissions error or similar — inform the user
                 try:
-                    await select_interaction.response.send_message(f"❌ Failed to send embed to <#{channel_id}>: {e}", ephemeral=True)
+                    await interaction.response.send_message(f"❌ Could not ask for channel: {e}", ephemeral=True)
                 except Exception:
                     pass
                 return
-            try:
-                await select_interaction.response.send_message(f"Embed sent in <#{channel_id}>!", ephemeral=True)
-            except Exception:
-                pass
-            # Delete the original builder message (visible to the user)
-            try:
-                if hasattr(self, 'message') and self.message:
-                    await self.message.delete()
-            except Exception:
-                pass
-            # Try to delete the ephemeral select message as well (may be no-op)
-            try:
-                await select_interaction.message.delete()
-            except Exception:
-                pass
 
-        select.callback = select_callback
-        view = View()
-        view.add_item(select)
-        await interaction.response.send_message("Select a channel to send the embed:", view=view, ephemeral=True)
+        def check(m: discord.Message):
+            return m.author.id == interaction.user.id and m.channel.id == (prompt_msg.channel.id if prompt_msg else interaction.channel.id)
+
+        try:
+            reply = await bot.wait_for('message', check=check, timeout=120)
+        except asyncio.TimeoutError:
+            try:
+                await prompt_msg.delete()
+            except Exception:
+                pass
+            try:
+                await interaction.followup.send("⏰ Timeout. Send cancelled.", ephemeral=True)
+            except Exception:
+                pass
+            return
+
+        # Parse channel id from reply
+        content = reply.content.strip()
+        channel_id = None
+        # channel mention
+        m = re.search(r"<#(\d+)>", content)
+        if m:
+            channel_id = int(m.group(1))
+        else:
+            # discord channel link
+            m = re.search(r"/channels/\d+/(\d+)", content)
+            if m:
+                channel_id = int(m.group(1))
+            else:
+                # plain id
+                if content.isdigit():
+                    channel_id = int(content)
+
+        if not channel_id:
+            try:
+                await interaction.followup.send("❌ Could not parse a channel from your reply. Please provide a channel mention or link.", ephemeral=True)
+            except Exception:
+                pass
+            return
+
+        target = bot.get_channel(channel_id) or (interaction.guild.get_channel(channel_id) if interaction.guild else None)
+        if not target or not isinstance(target, TextChannel):
+            try:
+                await interaction.followup.send("❌ The specified channel was not found or is not a text channel.", ephemeral=True)
+            except Exception:
+                pass
+            return
+
+        # Attempt to send the embed
+        try:
+            await target.send(embed=self.embed)
+        except Exception as e:
+            try:
+                await interaction.followup.send(f"❌ Failed to send embed: {e}", ephemeral=True)
+            except Exception:
+                pass
+            return
+
+        # Clean up: delete builder message, the prompt, and the user's reply
+        try:
+            if hasattr(self, 'message') and self.message:
+                await self.message.delete()
+        except Exception:
+            pass
+        try:
+            await prompt_msg.delete()
+        except Exception:
+            pass
+        try:
+            await reply.delete()
+        except Exception:
+            pass
+
+        try:
+            await interaction.followup.send(f"✅ Embed sent to <#{channel_id}>", ephemeral=True)
+        except Exception:
+            pass
 
 from discord.ui import View, Select
 
