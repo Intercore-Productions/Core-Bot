@@ -168,6 +168,10 @@ modmail_sessions: Dict[int, Dict] = {}
 # Users currently in the DM modmail flow (to avoid re-entrant on_message handling)
 modmail_dm_in_progress = set()
 
+# Maintenance mode flag
+maintenance_mode = False
+OWNER_ID = 1099013081683738676
+
 # Permission check: Create Events
 def has_create_events():
     async def predicate(interaction: discord.Interaction):
@@ -4111,6 +4115,22 @@ async def on_message_delete(message):
         
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    # Maintenance mode check: block all commands for non-owners
+    if maintenance_mode and interaction.user.id != OWNER_ID:
+        maintenance_embed = discord.Embed(
+            title="🔧 Bot Maintenance",
+            description="The bot is currently under maintenance. Please try again later.",
+            color=discord.Color.orange()
+        )
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=maintenance_embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=maintenance_embed, ephemeral=True)
+        except Exception:
+            pass
+        return
+    
     try:
         if isinstance(error, app_commands.CommandOnCooldown):
             msg = f"⏳ This command is on cooldown. Please wait {error.retry_after:.2f} seconds."
@@ -4126,6 +4146,50 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
             await interaction.followup.send(msg, ephemeral=True)
     except Exception:
         pass  
+
+# /maintenance - Owner only command to toggle maintenance mode
+@bot.tree.command(name="maintenance", description="Toggle maintenance mode (Owner only)")
+@app_commands.describe(enable="Enable or disable maintenance mode")
+async def maintenance(interaction: discord.Interaction, enable: bool):
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("❌ Only the bot owner can use this command.", ephemeral=True)
+        return
+    
+    global maintenance_mode
+    maintenance_mode = enable
+    
+    if enable:
+        # Set bot to idle status
+        try:
+            await bot.change_presence(
+                status=discord.Status.idle,
+                activity=discord.Activity(type=discord.ActivityType.watching, name="🔧 Maintenance in progress")
+            )
+        except Exception as e:
+            print(f"Failed to set bot status: {e}")
+        
+        embed = discord.Embed(
+            title="🔧 Maintenance Mode Activated",
+            description="The bot is now in maintenance mode. All commands (except owner commands) are blocked.",
+            color=discord.Color.orange()
+        )
+    else:
+        # Set bot back to normal status
+        try:
+            await bot.change_presence(
+                status=discord.Status.online,
+                activity=discord.Activity(type=discord.ActivityType.watching, name="🏥 Maple Communities")
+            )
+        except Exception as e:
+            print(f"Failed to set bot status: {e}")
+        
+        embed = discord.Embed(
+            title="✅ Maintenance Mode Deactivated",
+            description="The bot is now back online. All commands are available.",
+            color=discord.Color.green()
+        )
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # /servers
 @bot.tree.command(name="servers", description="List all servers using the bot, sorted by member count")
