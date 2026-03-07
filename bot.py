@@ -1562,10 +1562,10 @@ async def bot_status(interaction: discord.Interaction, status: str, title: str, 
     if status != "fixed" and estimated_time:
         embed.add_field(name="Estimated Time", value=estimated_time, inline=False)
     embed.add_field(name="Developer", value=interaction.user.mention, inline=False)
-    embed.set_footer(text="To follow updates in real time, you can use the site [BetterStack](https://corebot.betteruptime.com/)")
+    embed.set_footer(text="To follow updates in real time, use BetterStack")
     
     # Ping role
-    ping_role = interaction.guild.get_role(1383087815956631703)
+    ping_role = interaction.guild.get_role(1383079620802383892)
     ping_text = ping_role.mention if ping_role else ""
     
     # Send
