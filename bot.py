@@ -418,7 +418,7 @@ class EmbedBuilderView(View):
                             pass
                 except Exception:
                     try:
-                        await modal_interaction.response.send_message("Invalid color! Usa formato HEX.", ephemeral=True)
+                        await modal_interaction.response.send_message("Invalid color! Use HEX format.", ephemeral=True)
                     except Exception:
                         try:
                             await modal_interaction.response.defer()
@@ -590,7 +590,7 @@ class EmbedBuilderView(View):
         if not self.premium:
             await interaction.response.send_message("Only Premium users can save presets.", ephemeral=True)
             return
-        # Salva preset su Supabase
+        # Save preset to Supabase
         preset_name = self.embed.title or "Preset"
         data = {
             "user_id": str(interaction.user.id),
@@ -1515,6 +1515,61 @@ async def purge(interaction: discord.Interaction, amount: int):
         return await interaction.response.send_message("You can only delete between 1 and 150 messages.", ephemeral=True)
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.response.send_message(f"✅ Deleted {len(deleted)} messages.", ephemeral=True)
+
+@bot.tree.command(name="bot-status", description="Update bot status")
+@app_commands.describe(status="Bot status", title="Status title", reason="Reason (ignored for Fixed)", estimated_time="Estimated fixing time (not for Fixed)")
+@app_commands.choices(status=[
+    app_commands.Choice(name="Degrade", value="degrade"),
+    app_commands.Choice(name="Downtime", value="downtime"),
+    app_commands.Choice(name="Maintenance", value="maintenance"),
+    app_commands.Choice(name="Update", value="update"),
+    app_commands.Choice(name="Fixed", value="fixed"),
+])
+async def bot_status(interaction: discord.Interaction, status: str, title: str, reason: str = None, estimated_time: str = None):
+    # Checks
+    if interaction.guild.id != 1383077857554727085:
+        return await interaction.response.send_message("This command can only be used in the specified server.", ephemeral=True)
+    if interaction.channel.id != 1383081890717896875:
+        return await interaction.response.send_message("This command can only be used in the specified channel.", ephemeral=True)
+    member = interaction.user
+    if not isinstance(member, discord.Member):
+        member = await interaction.guild.fetch_member(interaction.user.id)
+    role = interaction.guild.get_role(1383083595484233828)
+    if role not in member.roles:
+        return await interaction.response.send_message("You do not have the required role to use this command.", ephemeral=True)
+    
+    # Build the embed
+    emojis = {
+        "downtime": "🚫",
+        "degrade": "⚠️",
+        "maintenance": "🔧",
+        "update": "❗",
+        "fixed": "✅"
+    }
+    colors = {
+        "downtime": discord.Color.red(),
+        "degrade": discord.Color.yellow(),
+        "maintenance": discord.Color.blue(),
+        "update": discord.Color.red(),
+        "fixed": discord.Color.green()
+    }
+    embed_title = f"{emojis[status]} {title}"
+    embed = discord.Embed(title=embed_title, color=colors[status])
+    if status == "fixed":
+        embed.description = "The issue has been fixed."
+    else:
+        embed.description = reason
+    if status != "fixed" and estimated_time:
+        embed.add_field(name="Estimated Time", value=estimated_time, inline=False)
+    embed.add_field(name="Developer", value=interaction.user.mention, inline=False)
+    embed.set_footer(text="To follow updates in real time, you can use the site https://corebot.betteruptime.com/")
+    
+    # Ping role
+    ping_role = interaction.guild.get_role(1383087815956631703)
+    ping_text = ping_role.mention if ping_role else ""
+    
+    # Send
+    await interaction.response.send_message(ping_text, embed=embed)
 
 # /suggest
 from discord import Embed
