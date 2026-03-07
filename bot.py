@@ -1564,12 +1564,8 @@ async def bot_status(interaction: discord.Interaction, status: str, title: str, 
     embed.add_field(name="Developer", value=interaction.user.mention, inline=False)
     embed.set_footer(text="To follow updates in real time, use BetterStack")
     
-    # Ping role
-    ping_role = interaction.guild.get_role(1383079620802383892)
-    ping_text = ping_role.mention if ping_role else ""
-    
     # Send
-    await interaction.response.send_message(ping_text, embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 # /suggest
 from discord import Embed
