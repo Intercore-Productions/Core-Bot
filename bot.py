@@ -1567,6 +1567,47 @@ async def bot_status(interaction: discord.Interaction, status: str, title: str, 
     # Send
     await interaction.response.send_message(embed=embed)
 
+@bot.tree.command(name="shutdown", description="Shutdown the Maple server")
+@has_premium_server()
+async def shutdown(interaction: discord.Interaction):
+    config = load_config(interaction.guild.id)
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+
+    ingame_role_id = config.get("ingame_perms")
+    if not ingame_role_id or not any(str(role.id) == str(ingame_role_id) for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    headers = {
+        "X-Api-Key": config["api_key"],
+        "Content-Type": "application/json"
+    }
+    data = json.dumps({})  # Empty data for shutdown
+    try:
+        response = requests.post("https://maple-api.marizma.games/v1/server/shutdown", headers=headers, data=data)
+        if response.status_code == 200:
+            await interaction.followup.send("✅ Server shutdown initiated.")
+            # Log embed
+            log_channel = bot.get_channel(config["logs_channel"])
+            if log_channel:
+                embed = discord.Embed(title="🛑 Server Shutdown", color=discord.Color.red())
+                embed.add_field(name="By", value=interaction.user.mention, inline=False)
+                embed.timestamp = discord.utils.utcnow()
+                await log_channel.send(embed=embed)
+        else:
+            await interaction.followup.send(
+                f"❌ Failed to shutdown server.\n"
+                f"🔢 Status Code: {response.status_code}\n"
+                f"📨 Response: {response.text}\n"
+                f"📝 Payload: {data}"
+            )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error while sending request:\n```{str(e)}```")
+
 # /suggest
 from discord import Embed
 from discord.ext import commands
