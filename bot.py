@@ -1364,7 +1364,6 @@ async def reaction_role_list(interaction: discord.Interaction):
 
 @bot.tree.command(name="giveaway", description="Start a giveaway")
 @app_commands.describe(duration="Ex: 10m, 2h, 1d, 1w", winners="Number of winners", prize="Prize of the giveaway")
-@has_premium_server()
 @has_create_events()
 async def giveaway(interaction: discord.Interaction, duration: str, winners: int, prize: str):
     seconds = parse_duration(duration)
@@ -1441,7 +1440,6 @@ async def giveaway_reroll(interaction: discord.Interaction, message_id: str, win
 
 # --- /embed command ---
 @bot.tree.command(name="embed", description="Create a custom embed")
-@has_premium_server()
 async def embed_command(interaction: discord.Interaction):
     # Carica preset se premium
     premium = True
@@ -1508,7 +1506,7 @@ async def help_command(interaction: discord.Interaction):
 
 @bot.tree.command(name="purge", description="Delete up to 150 messages from this channel.")
 @app_commands.describe(amount="Number of messages to delete (max 150)")
-@has_premium_server()
+
 @has_delete_messages()
 async def purge(interaction: discord.Interaction, amount: int):
     if amount < 1 or amount > 150:
