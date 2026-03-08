@@ -3098,11 +3098,8 @@ async def session(
 
     await interaction.response.defer(thinking=True)
 
-    # --- Premium/Default logic ---
-    # Check premium status (same as /premium logic)
-    # Fix: premium_server is stored as 'Yes' or 'No', not boolean
-    is_premium = str(config.get("premium_server", "No")).lower() == "yes"
-    # Get custom session config fields
+    # --- Custom configuration logic ---
+    # Get custom session config fields (available to all servers now)
     custom_fields = {
         "SSU": {
             "message": config.get("session_ssu_message"),
@@ -3123,19 +3120,16 @@ async def session(
     }
 
     def get_embed(action_name, player_count=None):
-        # If premium and custom config set, use it, else fallback to default
-        if is_premium:
-            msg = custom_fields[action_name]["message"]
-            color_hex = custom_fields[action_name]["color"]
-            # Accept empty string as not set
-            if msg is not None and color_hex is not None and msg.strip() != "" and color_hex.strip() != "":
-                use_custom = True
-                # Robust HEX: add # if missing
-                color_hex = color_hex.strip()
-                if not color_hex.startswith("#"):
-                    color_hex = "#" + color_hex
-            else:
-                use_custom = False
+        # If custom config is set, use it, else fallback to default
+        msg = custom_fields[action_name]["message"]
+        color_hex = custom_fields[action_name]["color"]
+        # Accept empty string as not set
+        if msg is not None and color_hex is not None and msg.strip() != "" and color_hex.strip() != "":
+            use_custom = True
+            # Robust HEX: add # if missing
+            color_hex = color_hex.strip()
+            if not color_hex.startswith("#"):
+                color_hex = "#" + color_hex
         else:
             use_custom = False
 
@@ -3204,8 +3198,8 @@ async def session(
 
     # --- Action logic ---
     if action.value == "SSU":
-        # Use custom banner if premium and configured
-        if is_premium and config.get("session_ssu_banner") and config.get("session_ssu_banner").strip():
+        # Use custom banner if configured
+        if config.get("session_ssu_banner") and config.get("session_ssu_banner").strip():
             banner_text = config.get("session_ssu_banner")
         else:
             banner_text = f"[SSU] A new Session hosted by {interaction.user.display_name} is started. Use !mod or !help for any problem."
@@ -3227,8 +3221,8 @@ async def session(
         await interaction.followup.send("✅ Session start announced.", ephemeral=True)
 
     elif action.value == "SSD":
-        # Use custom banner if premium and configured
-        if is_premium and config.get("session_ssd_banner") and config.get("session_ssd_banner").strip():
+        # Use custom banner if configured
+        if config.get("session_ssd_banner") and config.get("session_ssd_banner").strip():
             banner_text = config.get("session_ssd_banner")
         else:
             banner_text = f"[SSD] The session hosted by {interaction.user.display_name} is now concluded, we invite you to leave our server. See you soon!"
