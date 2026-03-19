@@ -1,3 +1,4 @@
 .env
 .vscode/settings.json
 old-config.txt
+sql/create_auto_shift_tables.sql
