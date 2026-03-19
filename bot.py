@@ -2537,7 +2537,7 @@ async def player_ids(interaction: discord.Interaction):
             if not players:
                 await interaction.followup.send("No active players.")
                 return
-            player_list = "\n".join([f"- {p.get('UserId', 'Unknown')}" for p in players])
+            player_list = "\n".join([f"- {p}" for p in players])
             embed = discord.Embed(title="Active Player IDs", description=player_list, color=discord.Color.blue())
             await interaction.followup.send(embed=embed)
         else:
