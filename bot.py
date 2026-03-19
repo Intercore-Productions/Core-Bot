@@ -2520,6 +2520,31 @@ async def active_players(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
 
+@bot.tree.command(name="player-ids", description="Show Roblox IDs of active players on the server")
+async def player_ids(interaction: discord.Interaction):
+    config = load_config(interaction.guild.id)
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    headers = {"X-Api-Key": config["api_key"]}
+    try:
+        resp = requests.get("https://maple-api.marizma.games/v1/server/players", headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            players = data.get("data", {}).get("Players", [])
+            if not players:
+                await interaction.followup.send("No active players.")
+                return
+            player_list = "\n".join([f"- {p.get('UserId', 'Unknown')}" for p in players])
+            embed = discord.Embed(title="Active Player IDs", description=player_list, color=discord.Color.blue())
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send(f"❌ API Error: {resp.status_code}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
 # /hello (only for test)
 @bot.tree.command(name="hello", description="Say hi to the bot!")
 async def hello(interaction: discord.Interaction):
