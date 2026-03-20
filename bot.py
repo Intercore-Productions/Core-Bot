@@ -1839,8 +1839,6 @@ async def auto_shift(interaction: discord.Interaction, action: str):
             if str(target_guild.id) in guild_ids:
                 return await interaction.response.send_message("❌ You are already linked in this server.", ephemeral=True)
 
-        await interaction.response.defer(thinking=True)
-
         # Use modal to get Roblox username privately
         class RobloxModal(Modal):
             def __init__(self):
@@ -1849,12 +1847,13 @@ async def auto_shift(interaction: discord.Interaction, action: str):
                 self.add_item(self.roblox_input)
 
             async def on_submit(self, modal_interaction: discord.Interaction):
+                await modal_interaction.response.defer(thinking=True)
                 roblox_username = self.roblox_input.value.strip()
                 
                 # Get Roblox ID
                 roblox_id = username_to_userid(roblox_username)
                 if not roblox_id:
-                    await modal_interaction.response.send_message("❌ Roblox user not found.", ephemeral=True)
+                    await modal_interaction.followup.send("❌ Roblox user not found.", ephemeral=True)
                     return
 
                 # Generate verification code
@@ -1862,10 +1861,10 @@ async def auto_shift(interaction: discord.Interaction, action: str):
 
                 embed = discord.Embed(title="Verification Required", description=f"Please add this code to your Roblox profile description (bio):\n\n**{verification_code}**\n\nThen click the Verify button below.", color=discord.Color.orange())
                 view = VerifyView(verification_code, roblox_id, modal_interaction.user.id, target_guild.id)
-                await modal_interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                await modal_interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         modal = RobloxModal()
-        await interaction.followup.send_modal(modal)
+        await interaction.response.send_modal(modal)
 
 class VerifyView(discord.ui.View):
     def __init__(self, code, roblox_id, discord_id, guild_id):
