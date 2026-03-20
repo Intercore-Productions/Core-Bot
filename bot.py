@@ -1756,7 +1756,7 @@ async def auto_shift(interaction: discord.Interaction, action: str):
 
         # Ask for logs channel
         embed = discord.Embed(title="Auto-Shift Setup", description="Please mention the channel for shift logs (e.g. #shift-logs).", color=discord.Color.blue())
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
         def check(m):
             return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
@@ -1775,7 +1775,7 @@ async def auto_shift(interaction: discord.Interaction, action: str):
         # Ask for weekly report day
         days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         embed = discord.Embed(title="Weekly Report Day", description="Choose the day for weekly reports:\n" + "\n".join([f"{i+1}. {d.capitalize()}" for i, d in enumerate(days)]), color=discord.Color.blue())
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
         try:
             reply = await bot.wait_for('message', check=check, timeout=60)
