@@ -90,6 +90,13 @@ def load_config(guild_id):
     return config
 
 
+def is_premium_server_config(guild_id: int) -> bool:
+    config = load_config(guild_id)
+    if not config:
+        return False
+    return str(config.get("premium_server", "No")).lower() == "yes"
+
+
 # --- Reaction Roles Supabase helpers ---
 REACT_TABLE = "reaction_roles"
 
@@ -1725,24 +1732,30 @@ async def shutdown(interaction: discord.Interaction):
 ])
 async def auto_shift(interaction: discord.Interaction, action: str):
     if action == "create":
+        if not interaction.guild:
+            return await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
+
+        if not is_premium_server_config(interaction.guild.id):
+            return await interaction.response.send_message("❌ Auto-shift create is premium only.", ephemeral=True)
+
         # Check permissions: Manage Guild
         if not interaction.user.guild_permissions.manage_guild:
             return await interaction.response.send_message("❌ You need Manage Guild permission.", ephemeral=True)
-        
+
         # Check if already configured
         existing = supabase_get_activity_logs(interaction.guild.id)
         if existing:
             return await interaction.response.send_message("❌ Auto-shift is already configured for this server.", ephemeral=True)
-        
+
         await interaction.response.defer(thinking=True)
-        
+
         # Ask for logs channel
         embed = discord.Embed(title="Auto-Shift Setup", description="Please mention the channel for shift logs (e.g. #shift-logs).", color=discord.Color.blue())
         await interaction.followup.send(embed=embed)
-        
+
         def check(m):
             return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
-        
+
         try:
             reply = await bot.wait_for('message', check=check, timeout=60)
             if not reply.channel_mentions:
@@ -1753,12 +1766,12 @@ async def auto_shift(interaction: discord.Interaction, action: str):
         except asyncio.TimeoutError:
             await interaction.followup.send("⏰ Timeout.", ephemeral=True)
             return
-        
+
         # Ask for weekly report day
         days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         embed = discord.Embed(title="Weekly Report Day", description="Choose the day for weekly reports:\n" + "\n".join([f"{i+1}. {d.capitalize()}" for i, d in enumerate(days)]), color=discord.Color.blue())
         await interaction.followup.send(embed=embed)
-        
+
         try:
             reply = await bot.wait_for('message', check=check, timeout=60)
             try:
@@ -1773,32 +1786,55 @@ async def auto_shift(interaction: discord.Interaction, action: str):
         except asyncio.TimeoutError:
             await interaction.followup.send("⏰ Timeout.", ephemeral=True)
             return
-        
+
         # Save to DB
         success = supabase_insert_activity_logs(interaction.guild.id, logs_channel.id, weekly_day)
         if success:
             await interaction.followup.send(f"✅ Auto-shift configured!\nLogs Channel: {logs_channel.mention}\nWeekly Report Day: {weekly_day.capitalize()}", ephemeral=True)
         else:
             await interaction.followup.send("❌ Failed to save configuration.", ephemeral=True)
-    
+
     elif action == "link":
-        # Check if user is already linked
+        if interaction.guild:
+            target_guild = interaction.guild
+        else:
+            candidate_guilds = [g for g in bot.guilds if g.get_member(interaction.user.id) and supabase_get_activity_logs(g.id)]
+            if not candidate_guilds:
+                return await interaction.response.send_message("❌ You are not in any configured server, or no server is configured for auto-shift.", ephemeral=True)
+            if len(candidate_guilds) == 1:
+                target_guild = candidate_guilds[0]
+            else:
+                guild_list = "\n".join([f"{i+1}. {g.name} ({g.id})" for i, g in enumerate(candidate_guilds)])
+                await interaction.response.send_message(f"Please reply with the number of the server to link to:\n{guild_list}", ephemeral=True)
+
+                def guild_check(m):
+                    return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
+
+                try:
+                    reply = await bot.wait_for('message', check=guild_check, timeout=60)
+                    idx = int(reply.content.strip()) - 1
+                    if idx < 0 or idx >= len(candidate_guilds):
+                        return await interaction.response.send_message("❌ Invalid selection.", ephemeral=True)
+                    target_guild = candidate_guilds[idx]
+                    await reply.delete()
+                except (asyncio.TimeoutError, ValueError):
+                    return await interaction.response.send_message("⏰ Timeout or invalid input.", ephemeral=True)
+
         existing = supabase_get_auto_shift(interaction.user.id)
         if existing:
-            # Check if already linked to this guild
-            guild_ids = existing.get("guild_ids", "").split(",")
-            if str(interaction.guild.id) in guild_ids:
+            guild_ids = existing.get("guild_ids", "").split(",") if existing.get("guild_ids") else []
+            if str(target_guild.id) in guild_ids:
                 return await interaction.response.send_message("❌ You are already linked in this server.", ephemeral=True)
-        
+
         await interaction.response.defer(thinking=True)
-        
+
         # Ask for Roblox username
         embed = discord.Embed(title="Link Roblox Account", description="Please enter your Roblox username.", color=discord.Color.blue())
         await interaction.followup.send(embed=embed)
-        
+
         def check(m):
             return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
-        
+
         try:
             reply = await bot.wait_for('message', check=check, timeout=60)
             roblox_username = reply.content.strip()
@@ -1806,18 +1842,18 @@ async def auto_shift(interaction: discord.Interaction, action: str):
         except asyncio.TimeoutError:
             await interaction.followup.send("⏰ Timeout.", ephemeral=True)
             return
-        
+
         # Get Roblox ID
         roblox_id = username_to_userid(roblox_username)
         if not roblox_id:
             await interaction.followup.send("❌ Roblox user not found.", ephemeral=True)
             return
-        
+
         # Generate verification code
         verification_code = f"CORE_VERIFY_{interaction.user.id}_{random.randint(1000, 9999)}"
-        
+
         embed = discord.Embed(title="Verification Required", description=f"Please add this code to your Roblox profile description (bio):\n\n**{verification_code}**\n\nThen click the Verify button below.", color=discord.Color.orange())
-        view = VerifyView(verification_code, roblox_id, interaction.user.id, interaction.guild.id)
+        view = VerifyView(verification_code, roblox_id, interaction.user.id, target_guild.id)
         await interaction.followup.send(embed=embed, view=view)
 
 class VerifyView(discord.ui.View):
@@ -1861,20 +1897,43 @@ async def activity(interaction: discord.Interaction, user: discord.User = None):
     record = supabase_get_auto_shift(target_user.id)
     if not record:
         return await interaction.response.send_message("❌ User not linked.", ephemeral=True)
-    
-    guild_ids = record.get("guild_ids", "").split(",")
-    activities = record.get("activities", "").split(",")
-    try:
-        idx = guild_ids.index(str(interaction.guild.id))
-        total_seconds = int(activities[idx])
+
+    guild_ids = record.get("guild_ids", "").split(",") if record.get("guild_ids") else []
+    activities = record.get("activities", "").split(",") if record.get("activities") else []
+
+    if interaction.guild:
+        guild_str = str(interaction.guild.id)
+        if guild_str not in guild_ids:
+            return await interaction.response.send_message("❌ User is not linked in this server.", ephemeral=True)
+        idx = guild_ids.index(guild_str)
+        total_seconds = int(activities[idx]) if idx < len(activities) else 0
         hours = total_seconds // 3600
         minutes = (total_seconds % 3600) // 60
         embed = discord.Embed(title="Weekly Activity", color=discord.Color.blue())
         embed.add_field(name="User", value=target_user.mention, inline=False)
+        embed.add_field(name="Server", value=interaction.guild.name, inline=False)
         embed.add_field(name="Time", value=f"{hours}h {minutes}m", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    except (ValueError, IndexError):
-        await interaction.response.send_message("❌ User not linked in this server.", ephemeral=True)
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # DM context: show all linked servers
+    embed = discord.Embed(title="Weekly Activity (All Servers)", color=discord.Color.blue())
+    embed.add_field(name="User", value=target_user.mention, inline=False)
+    if not guild_ids:
+        embed.description = "No servers linked."
+    else:
+        lines = []
+        for gi, sec in zip(guild_ids, activities):
+            try:
+                g = bot.get_guild(int(gi))
+                name = g.name if g else f"Unknown ({gi})"
+            except Exception:
+                name = f"Unknown ({gi})"
+            tot = int(sec or 0)
+            hours = tot // 3600
+            minutes = (tot % 3600) // 60
+            lines.append(f"**{name}**: {hours}h {minutes}m")
+        embed.description = "\n".join(lines)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # /suggest
 from discord import Embed
@@ -4633,23 +4692,26 @@ async def auto_shift_monitor():
                 except Exception:
                     pass
                 
-                # Check for players who started playing
+                # Check for players who started/stopped playing for this guild
                 for roblox_id, discord_id in linked_users.items():
-                    if roblox_id in current_players and roblox_id not in active_shifts:
-                        # Start shift
-                        active_shifts[roblox_id] = {str(guild.id): time.time()}
-                        try:
-                            user = await bot.fetch_user(discord_id)
-                            embed = discord.Embed(title="🔔 Shift Started", description=f"Your shift has started in **{guild.name}**.", color=discord.Color.green())
-                            await user.send(embed=embed)
-                        except Exception:
-                            pass
-                    elif roblox_id not in current_players and roblox_id in active_shifts:
-                        # End shift
-                        if str(guild.id) in active_shifts[roblox_id]:
+                    if roblox_id in current_players:
+                        if roblox_id not in active_shifts:
+                            active_shifts[roblox_id] = {}
+                        if str(guild.id) not in active_shifts[roblox_id]:
+                            active_shifts[roblox_id][str(guild.id)] = time.time()
+                            try:
+                                user = await bot.fetch_user(discord_id)
+                                embed = discord.Embed(title="🔔 Shift Started", description=f"Your shift has started in **{guild.name}**.", color=discord.Color.green())
+                                await user.send(embed=embed)
+                            except Exception:
+                                pass
+                    else:
+                        if roblox_id in active_shifts and str(guild.id) in active_shifts[roblox_id]:
                             start_time = active_shifts[roblox_id][str(guild.id)]
                             duration = int(time.time() - start_time)
                             supabase_update_activity(discord_id, guild.id, duration)
+
+                            # Send user DM on end
                             try:
                                 user = await bot.fetch_user(discord_id)
                                 hours = duration // 3600
@@ -4658,7 +4720,23 @@ async def auto_shift_monitor():
                                 await user.send(embed=embed)
                             except Exception:
                                 pass
-                        del active_shifts[roblox_id]
+
+                            # Send logs channel update
+                            logs_channel = bot.get_channel(int(activity_config.get("logs_channel_id", 0)))
+                            if logs_channel:
+                                try:
+                                    log_embed = discord.Embed(title="📝 Shift Completed", color=discord.Color.dark_blue())
+                                    log_embed.add_field(name="Player", value=f"<@{discord_id}>", inline=False)
+                                    log_embed.add_field(name="Server", value=guild.name, inline=False)
+                                    log_embed.add_field(name="Duration", value=f"{hours}h {minutes}m", inline=False)
+                                    log_embed.timestamp = discord.utils.utcnow()
+                                    await logs_channel.send(embed=log_embed)
+                                except Exception:
+                                    pass
+
+                            del active_shifts[roblox_id][str(guild.id)]
+                            if not active_shifts[roblox_id]:
+                                del active_shifts[roblox_id]
                 
                 # Check for weekly reset and report
                 today = datetime.datetime.now().strftime("%A").lower()
