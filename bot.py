@@ -1169,11 +1169,12 @@ async def on_message(message):
 @bot.tree.command(name="reaction-role-create", description="Create a reaction role mapping for a message")
 @app_commands.describe(channel="Channel containing the target message", message_id="ID of the message to attach the reaction to", role="Role to assign", emoji="Emoji to use (unicode or <:name:id>)")
 async def reaction_role_create(interaction: discord.Interaction, channel: discord.TextChannel, message_id: str, role: discord.Role, emoji: str):
+    await interaction.response.defer(thinking=True)
+
     # Permission check
     if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
+        return await interaction.followup.send("❌ You need Manage Roles permission to use this.", ephemeral=True)
 
-    await interaction.response.defer(thinking=True)
     guild = interaction.guild
     # Ensure channel is in guild
     if channel.guild.id != guild.id:
@@ -1352,10 +1353,11 @@ class ReactionRoleDeleteView(discord.ui.View):
 
 @bot.tree.command(name="reaction-role-delete", description="Delete a reaction-role mapping (select from list)")
 async def reaction_role_delete(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
-
     await interaction.response.defer(thinking=True)
+
+    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
+        return await interaction.followup.send("❌ You need Manage Roles permission to use this.", ephemeral=True)
+
     guild = interaction.guild
     mappings = supabase_get_reaction_roles_by_guild(guild.id)
     if not mappings:
@@ -1446,10 +1448,11 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 
 @bot.tree.command(name="reaction-role-list", description="List reaction-role mappings for this server")
 async def reaction_role_list(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ You need Manage Roles permission to use this.", ephemeral=True)
-
     await interaction.response.defer(thinking=True)
+
+    if not interaction.user.guild_permissions.manage_roles and not interaction.user.guild_permissions.administrator:
+        return await interaction.followup.send("❌ You need Manage Roles permission to use this.", ephemeral=True)
+
     guild = interaction.guild
     mappings = supabase_get_reaction_roles_by_guild(guild.id)
     if not mappings:
@@ -1558,6 +1561,8 @@ async def giveaway_reroll(interaction: discord.Interaction, message_id: str, win
 # --- /embed command ---
 @bot.tree.command(name="embed", description="Create a custom embed")
 async def embed_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
     # Carica preset se premium
     premium = True
     presets = []
@@ -1575,7 +1580,7 @@ async def embed_command(interaction: discord.Interaction):
                 presets = resp.json()
     view = EmbedBuilderView(author_id=interaction.user.id, premium=premium, presets=presets)
     # Send the builder visibly (not hidden). We'll delete it after the embed is sent.
-    await interaction.response.send_message("Create your embed:", embed=view.embed, view=view)
+    await interaction.followup.send("Create your embed:", embed=view.embed, view=view)
     try:
         # store the message object on the view so callbacks can delete it later
         msg = await interaction.original_response()
@@ -1685,17 +1690,17 @@ async def bot_status(interaction: discord.Interaction, status: str, title: str, 
 @bot.tree.command(name="shutdown", description="Shutdown the Maple server")
 @has_premium_server()
 async def shutdown(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
     config = load_config(interaction.guild.id)
     if not config:
-        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        await interaction.followup.send("❌ This server is not configured. Use `/config` first.", ephemeral=True)
         return
 
     ingame_role_id = config.get("ingame_perms")
     if not ingame_role_id or not any(str(role.id) == str(ingame_role_id) for role in interaction.user.roles):
-        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You do not have permission to use this command.", ephemeral=True)
         return
-
-    await interaction.response.defer(thinking=True)
 
     headers = {
         "X-Api-Key": config["api_key"],
@@ -1804,21 +1809,29 @@ async def auto_shift(interaction: discord.Interaction, action: str):
             if len(candidate_guilds) == 1:
                 target_guild = candidate_guilds[0]
             else:
-                guild_list = "\n".join([f"{i+1}. {g.name} ({g.id})" for i, g in enumerate(candidate_guilds)])
-                await interaction.response.send_message(f"Please reply with the number of the server to link to:\n{guild_list}", ephemeral=True)
+                # Use select menu for guild selection
+                class GuildSelectView(discord.ui.View):
+                    def __init__(self, guilds):
+                        super().__init__(timeout=60)
+                        options = [discord.SelectOption(label=g.name, value=str(i)) for i, g in enumerate(guilds)]
+                        self.select = discord.ui.Select(placeholder="Select the server to link to", options=options)
+                        self.add_item(self.select)
+                        self.selected_guild = None
 
-                def guild_check(m):
-                    return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
+                    @discord.ui.select()
+                    async def select_guild(self, select_interaction: discord.Interaction, select: discord.ui.Select):
+                        idx = int(select.values[0])
+                        self.selected_guild = candidate_guilds[idx]
+                        await select_interaction.response.send_message(f"Selected {self.selected_guild.name}. Proceeding...", ephemeral=True)
+                        self.stop()
 
-                try:
-                    reply = await bot.wait_for('message', check=guild_check, timeout=60)
-                    idx = int(reply.content.strip()) - 1
-                    if idx < 0 or idx >= len(candidate_guilds):
-                        return await interaction.response.send_message("❌ Invalid selection.", ephemeral=True)
-                    target_guild = candidate_guilds[idx]
-                    await reply.delete()
-                except (asyncio.TimeoutError, ValueError):
-                    return await interaction.response.send_message("⏰ Timeout or invalid input.", ephemeral=True)
+                view = GuildSelectView(candidate_guilds)
+                await interaction.response.send_message("Please select the server to link your account to:", view=view, ephemeral=True)
+                
+                if await view.wait():
+                    return await interaction.followup.send("⏰ Timeout.", ephemeral=True)
+                
+                target_guild = view.selected_guild
 
         existing = supabase_get_auto_shift(interaction.user.id)
         if existing:
@@ -1828,33 +1841,31 @@ async def auto_shift(interaction: discord.Interaction, action: str):
 
         await interaction.response.defer(thinking=True)
 
-        # Ask for Roblox username
-        embed = discord.Embed(title="Link Roblox Account", description="Please enter your Roblox username.", color=discord.Color.blue())
-        await interaction.followup.send(embed=embed)
+        # Use modal to get Roblox username privately
+        class RobloxModal(Modal):
+            def __init__(self):
+                super().__init__(title="Link Roblox Account")
+                self.roblox_input = TextInput(label="Roblox Username", placeholder="Enter your Roblox username", max_length=20)
+                self.add_item(self.roblox_input)
 
-        def check(m):
-            return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                roblox_username = self.roblox_input.value.strip()
+                
+                # Get Roblox ID
+                roblox_id = username_to_userid(roblox_username)
+                if not roblox_id:
+                    await modal_interaction.response.send_message("❌ Roblox user not found.", ephemeral=True)
+                    return
 
-        try:
-            reply = await bot.wait_for('message', check=check, timeout=60)
-            roblox_username = reply.content.strip()
-            await reply.delete()
-        except asyncio.TimeoutError:
-            await interaction.followup.send("⏰ Timeout.", ephemeral=True)
-            return
+                # Generate verification code
+                verification_code = f"CORE_VERIFY_{modal_interaction.user.id}_{random.randint(1000, 9999)}"
 
-        # Get Roblox ID
-        roblox_id = username_to_userid(roblox_username)
-        if not roblox_id:
-            await interaction.followup.send("❌ Roblox user not found.", ephemeral=True)
-            return
+                embed = discord.Embed(title="Verification Required", description=f"Please add this code to your Roblox profile description (bio):\n\n**{verification_code}**\n\nThen click the Verify button below.", color=discord.Color.orange())
+                view = VerifyView(verification_code, roblox_id, modal_interaction.user.id, target_guild.id)
+                await modal_interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-        # Generate verification code
-        verification_code = f"CORE_VERIFY_{interaction.user.id}_{random.randint(1000, 9999)}"
-
-        embed = discord.Embed(title="Verification Required", description=f"Please add this code to your Roblox profile description (bio):\n\n**{verification_code}**\n\nThen click the Verify button below.", color=discord.Color.orange())
-        view = VerifyView(verification_code, roblox_id, interaction.user.id, target_guild.id)
-        await interaction.followup.send(embed=embed, view=view)
+        modal = RobloxModal()
+        await interaction.followup.send_modal(modal)
 
 class VerifyView(discord.ui.View):
     def __init__(self, code, roblox_id, discord_id, guild_id):
@@ -1893,10 +1904,12 @@ class VerifyView(discord.ui.View):
 @bot.tree.command(name="activity", description="View weekly activity")
 @app_commands.describe(user="User to check (optional, defaults to yourself)")
 async def activity(interaction: discord.Interaction, user: discord.User = None):
+    await interaction.response.defer(thinking=True)
+
     target_user = user or interaction.user
     record = supabase_get_auto_shift(target_user.id)
     if not record:
-        return await interaction.response.send_message("❌ User not linked.", ephemeral=True)
+        return await interaction.followup.send("❌ User not linked.", ephemeral=True)
 
     guild_ids = record.get("guild_ids", "").split(",") if record.get("guild_ids") else []
     activities = record.get("activities", "").split(",") if record.get("activities") else []
@@ -1904,7 +1917,7 @@ async def activity(interaction: discord.Interaction, user: discord.User = None):
     if interaction.guild:
         guild_str = str(interaction.guild.id)
         if guild_str not in guild_ids:
-            return await interaction.response.send_message("❌ User is not linked in this server.", ephemeral=True)
+            return await interaction.followup.send("❌ User is not linked in this server.", ephemeral=True)
         idx = guild_ids.index(guild_str)
         total_seconds = int(activities[idx]) if idx < len(activities) else 0
         hours = total_seconds // 3600
@@ -1913,7 +1926,7 @@ async def activity(interaction: discord.Interaction, user: discord.User = None):
         embed.add_field(name="User", value=target_user.mention, inline=False)
         embed.add_field(name="Server", value=interaction.guild.name, inline=False)
         embed.add_field(name="Time", value=f"{hours}h {minutes}m", inline=False)
-        return await interaction.response.send_message(embed=embed, ephemeral=True)
+        return await interaction.followup.send(embed=embed, ephemeral=True)
 
     # DM context: show all linked servers
     embed = discord.Embed(title="Weekly Activity (All Servers)", color=discord.Color.blue())
@@ -1933,7 +1946,7 @@ async def activity(interaction: discord.Interaction, user: discord.User = None):
             minutes = (tot % 3600) // 60
             lines.append(f"**{name}**: {hours}h {minutes}m")
         embed.description = "\n".join(lines)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 # /suggest
 from discord import Embed
@@ -2177,8 +2190,10 @@ async def modmail(
     staff_roles: Optional[str] = None,
     log_channel: Optional[TextChannel] = None
 ):
+    await interaction.response.defer(thinking=True)
+
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Only administrators can use this command.", ephemeral=True)
+        await interaction.followup.send("❌ Only administrators can use this command.", ephemeral=True)
         return
 
     config = load_config(interaction.guild.id)
@@ -2199,7 +2214,7 @@ async def modmail(
                 await interaction2.response.defer()
                 self.stop()
         view = ConfirmView()
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Modmail is already enabled. Do you want to disable it and clear the configuration?",
             view=view, ephemeral=True
         )
@@ -2440,12 +2455,12 @@ async def close(interaction: discord.Interaction, reason: Optional[str] = None):
 @bot.tree.command(name="game-queue", description="Show the current server queue.")
 @has_premium_server()
 async def game_queue(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
     config = load_config(interaction.guild.id)
     if not config:
-        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        await interaction.followup.send("❌ This server is not configured. Use `/config` first.", ephemeral=True)
         return
-
-    await interaction.response.defer(thinking=True)
 
     headers = {
         "X-Api-Key": config["api_key"],
@@ -2502,16 +2517,16 @@ async def game_settings(
         await interaction.response.send_message("❌ You need the **Manage Server** permission to use this command.", ephemeral=True)
         return
 
+    await interaction.response.defer(thinking=True)
+
     config = load_config(interaction.guild.id)
     if not config:
-        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        await interaction.followup.send("❌ This server is not configured. Use `/config` first.", ephemeral=True)
         return
 
     if hide_from_list is None and private is None and min_level is None:
-        await interaction.response.send_message("⚠️ You must provide at least one setting to change.", ephemeral=True)
+        await interaction.followup.send("⚠️ You must provide at least one setting to change.", ephemeral=True)
         return
-
-    await interaction.response.defer(thinking=True)
 
     headers = {
         "X-Api-Key": config["api_key"],
@@ -2746,52 +2761,43 @@ async def stats(interaction: discord.Interaction):
 @bot.tree.command(name="announce", description="Send an in-game announcement")
 @app_commands.describe(message="The message to send in-game")
 async def announce(interaction: discord.Interaction, message: str):
+    config = load_config(interaction.guild.id)
+    if not config:
+        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        return
+
+    if not any(role.id in config["announce_roles"] for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    headers = {
+        "X-Api-Key": config["api_key"],
+        "Content-Type": "application/json"
+    }
+    data = json.dumps({"Message": message})
     try:
-        config = load_config(interaction.guild.id)
-        if not config:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
-            return
-
-        if not any(role.id in config["announce_roles"] for role in interaction.user.roles):
-            if not interaction.response.is_done():
-                await interaction.response.send_message("❌ You do not have the required role to use this command.", ephemeral=True)
-            return
-
-        await interaction.response.defer(thinking=True)
-
-        headers = {
-            "X-Api-Key": config["api_key"],
-            "Content-Type": "application/json"
-        }
-        data = json.dumps({"Message": message})
-        try:
-            response = requests.post("https://maple-api.marizma.games/v1/server/announce", headers=headers, data=data)
-            if response.status_code == 200:
-                await interaction.followup.send(f"✅ Announcement sent: `{message}`")
-                # Log embed
-                log_channel = bot.get_channel(config["logs_channel"])
-                if log_channel:
-                    embed = discord.Embed(title="📢 Announcement Sent", color=discord.Color.blue())
-                    embed.add_field(name="By", value=interaction.user.mention, inline=False)
-                    embed.add_field(name="Message", value=message, inline=False)
-                    embed.timestamp = discord.utils.utcnow()
-                    await log_channel.send(embed=embed)
-            else:
-                await interaction.followup.send(
-                    f"❌ Failed to send announcement.\n"
-                    f"🔢 Status Code: {response.status_code}\n"
-                    f"📨 Response: {response.text}\n"
-                    f"📝 Payload: {data}"
-                )
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error while sending request:\n```{str(e)}```")
+        response = requests.post("https://maple-api.marizma.games/v1/server/announce", headers=headers, data=data)
+        if response.status_code == 200:
+            await interaction.followup.send(f"✅ Announcement sent: `{message}`")
+            # Log embed
+            log_channel = bot.get_channel(config["logs_channel"])
+            if log_channel:
+                embed = discord.Embed(title="📢 Announcement Sent", color=discord.Color.blue())
+                embed.add_field(name="By", value=interaction.user.mention, inline=False)
+                embed.add_field(name="Message", value=message, inline=False)
+                embed.timestamp = discord.utils.utcnow()
+                await log_channel.send(embed=embed)
+        else:
+            await interaction.followup.send(
+                f"❌ Failed to send announcement.\n"
+                f"🔢 Status Code: {response.status_code}\n"
+                f"📨 Response: {response.text}\n"
+                f"📝 Payload: {data}"
+            )
     except Exception as e:
-        if not interaction.response.is_done():
-            try:
-                await interaction.response.send_message(f"❌ Internal error: {str(e)}", ephemeral=True)
-            except Exception:
-                pass
+        await interaction.followup.send(f"❌ Error while sending request:\n```{str(e)}```")
 
 # /game-info
 @bot.tree.command(name="game-info", description="Show public server information")
@@ -2830,24 +2836,22 @@ async def game_info(interaction: discord.Interaction):
 # /active-players
 @bot.tree.command(name="active-players", description="Show active players on the server")
 async def active_players(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
     config = load_config(interaction.guild.id)
     if not config:
-        await interaction.response.send_message("❌ This server is not configured. Use `/config` first.", ephemeral=True)
+        await interaction.followup.send("❌ This server is not configured. Use `/config` first.", ephemeral=True)
         return
 
-    await interaction.response.defer(thinking=True)
     headers = {"X-Api-Key": config["api_key"]}
-    try:
-        response = requests.get("https://maple-api.marizma.games/v1/server/players", headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            players = data.get("data", {}).get("Players", [])
-            count = len(players)
-            await interaction.followup.send(f"👥 Players online: {count}")
-        else:
-            await interaction.followup.send(f"❌ Failed to fetch active players. Status: {response.status_code}\n{response.text}")
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {str(e)}")
+    response = requests.get("https://maple-api.marizma.games/v1/server/players", headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        players = data.get("data", {}).get("Players", [])
+        count = len(players)
+        await interaction.followup.send(f"👥 Players online: {count}")
+    else:
+        await interaction.followup.send(f"❌ Failed to fetch active players. Status: {response.status_code}\n{response.text}")
 
 # /hello (only for test)
 @bot.tree.command(name="hello", description="Say hi to the bot!")
@@ -2991,12 +2995,13 @@ def load_open_modmail_sessions_from_db():
 @bot.tree.command(name="warn", description="Warn a user")
 @app_commands.describe(user="User to warn", reason="Reason for warning")
 async def warn(interaction: discord.Interaction, user: discord.Member, reason: str):
+    await interaction.response.defer(thinking=True)
+
     if not interaction.user.guild_permissions.mute_members:
-        return await interaction.response.send_message("❌ You need the Mute Members permission.", ephemeral=True)
+        return await interaction.followup.send("❌ You need the Mute Members permission.", ephemeral=True)
     config, log_channel = check_config_and_log(interaction)
     if not config:
-        return await interaction.response.send_message("❌ Bot not configured. Use /config.", ephemeral=True)
-    await interaction.response.defer(thinking=True)
+        return await interaction.followup.send("❌ Bot not configured. Use /config.", ephemeral=True)
     embed = discord.Embed(title="⚠️ Warning Issued", color=discord.Color.orange())
     embed.add_field(name="User", value=f"{user.mention} ({user.id})", inline=False)
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
@@ -3010,12 +3015,13 @@ async def warn(interaction: discord.Interaction, user: discord.Member, reason: s
 @bot.tree.command(name="unwarn", description="Remove a warning from a user")
 @app_commands.describe(user="User to unwarn", reason="Reason for unwarn")
 async def unwarn(interaction: discord.Interaction, user: discord.Member, reason: str):
+    await interaction.response.defer(thinking=True)
+
     if not interaction.user.guild_permissions.mute_members:
-        return await interaction.response.send_message("❌ You need the Mute Members permission.", ephemeral=True)
+        return await interaction.followup.send("❌ You need the Mute Members permission.", ephemeral=True)
     config, log_channel = check_config_and_log(interaction)
     if not config:
-        return await interaction.response.send_message("❌ Bot not configured. Use /config.", ephemeral=True)
-    await interaction.response.defer(thinking=True)
+        return await interaction.followup.send("❌ Bot not configured. Use /config.", ephemeral=True)
     embed = discord.Embed(title="✅ Warning Removed", color=discord.Color.green())
     embed.add_field(name="User", value=f"{user.mention} ({user.id})", inline=False)
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
@@ -3029,12 +3035,13 @@ async def unwarn(interaction: discord.Interaction, user: discord.Member, reason:
 @bot.tree.command(name="mute", description="Mute a user")
 @app_commands.describe(user="User to mute", reason="Reason for mute")
 async def mute(interaction: discord.Interaction, user: discord.Member, reason: str):
+    await interaction.response.defer(thinking=True)
+
     if not interaction.user.guild_permissions.mute_members:
-        return await interaction.response.send_message("❌ You need the Mute Members permission.", ephemeral=True)
+        return await interaction.followup.send("❌ You need the Mute Members permission.", ephemeral=True)
     config, log_channel = check_config_and_log(interaction)
     if not config:
-        return await interaction.response.send_message("❌ Bot not configured. Use /config.", ephemeral=True)
-    await interaction.response.defer(thinking=True)
+        return await interaction.followup.send("❌ Bot not configured. Use /config.", ephemeral=True)
     try:
         await user.edit(timeout=discord.utils.utcnow() + discord.timedelta(days=28))
     except Exception:
@@ -3052,12 +3059,13 @@ async def mute(interaction: discord.Interaction, user: discord.Member, reason: s
 @bot.tree.command(name="unmute", description="Unmute a user")
 @app_commands.describe(user="User to unmute", reason="Reason for unmute")
 async def unmute(interaction: discord.Interaction, user: discord.Member, reason: str):
+    await interaction.response.defer(thinking=True)
+
     if not interaction.user.guild_permissions.mute_members:
-        return await interaction.response.send_message("❌ You need the Mute Members permission.", ephemeral=True)
+        return await interaction.followup.send("❌ You need the Mute Members permission.", ephemeral=True)
     config, log_channel = check_config_and_log(interaction)
     if not config:
-        return await interaction.response.send_message("❌ Bot not configured. Use /config.", ephemeral=True)
-    await interaction.response.defer(thinking=True)
+        return await interaction.followup.send("❌ Bot not configured. Use /config.", ephemeral=True)
     try:
         await user.edit(timeout=None)
     except Exception:
@@ -3075,12 +3083,13 @@ async def unmute(interaction: discord.Interaction, user: discord.Member, reason:
 @bot.tree.command(name="kick", description="Kick a user")
 @app_commands.describe(user="User to kick", reason="Reason for kick")
 async def kick(interaction: discord.Interaction, user: discord.Member, reason: str):
+    await interaction.response.defer(thinking=True)
+
     if not interaction.user.guild_permissions.kick_members:
-        return await interaction.response.send_message("❌ You need the Kick Members permission.", ephemeral=True)
+        return await interaction.followup.send("❌ You need the Kick Members permission.", ephemeral=True)
     config, log_channel = check_config_and_log(interaction)
     if not config:
-        return await interaction.response.send_message("❌ Bot not configured. Use /config.", ephemeral=True)
-    await interaction.response.defer(thinking=True)
+        return await interaction.followup.send("❌ Bot not configured. Use /config.", ephemeral=True)
     embed = discord.Embed(title="👢 User Kicked", color=discord.Color.orange())
     embed.add_field(name="User", value=f"{user.mention} ({user.id})", inline=False)
     embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
