@@ -1925,11 +1925,11 @@ async def shift_host(interaction: discord.Interaction, action: str):
 
     if action == "start":
         embed = discord.Embed(title="Shift Hosting Start", color=discord.Color.green())
-        embed.add_field(name="Host", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Start Time", value=f"<t:{int(interaction.created_at.timestamp())}:F>", inline=True)
+        embed.add_field(name="Host", value=interaction.user.mention, inline=False)
+        embed.add_field(name="Start Time", value=f"<t:{int(interaction.created_at.timestamp())}:F>", inline=False)
         
         await channel.send(embed=embed)
-        await interaction.followup.send("✅ Shift started!", ephemeral=True)
+        await interaction.followup.send("✅ Shift started! Happy hosting! :)", ephemeral=True)
     
     elif action == "end":
         # Find the last bot message with shift embed
@@ -1937,6 +1937,11 @@ async def shift_host(interaction: discord.Interaction, action: str):
             if message.author == bot.user and message.embeds:
                 embed = message.embeds[0]
                 if embed.title == "Shift Hosting Start":
+                    # Check if already ended
+                    has_end_time = any(field.name == "End Time" for field in embed.fields)
+                    if has_end_time:
+                        return await interaction.followup.send("❌ This shift has already been ended.", ephemeral=True)
+                    
                     # Check permissions to end
                     is_owner = any(str(role.id) == "1483263475630477414" for role in interaction.user.roles)
                     
@@ -1973,8 +1978,10 @@ async def shift_host(interaction: discord.Interaction, action: str):
                     duration_str = f"{hours}h {minutes}m"
                     
                     # Update embed
-                    embed.add_field(name="End Time", value=f"<t:{end_time}:F>", inline=True)
-                    embed.add_field(name="Duration", value=duration_str, inline=True)
+                    embed.title = "Shift Hosting End"
+                    embed.color = discord.Color.red()
+                    embed.add_field(name="End Time", value=f"<t:{end_time}:F>", inline=False)
+                    embed.add_field(name="Duration", value=duration_str, inline=False)
                     
                     if is_owner and interaction.user.id != host_id:
                         embed.add_field(name="Manually closed by", value=interaction.user.mention, inline=False)
