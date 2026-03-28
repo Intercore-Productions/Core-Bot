@@ -1900,6 +1900,91 @@ class VerifyView(discord.ui.View):
         
         self.stop()
 
+# --- Shift Host Command ---
+@bot.tree.command(name="shift-host", description="Manage shift hosting")
+@app_commands.describe(action="Action to perform")
+@app_commands.choices(action=[
+    app_commands.Choice(name="Start", value="start"),
+    app_commands.Choice(name="End", value="end"),
+])
+async def shift_host(interaction: discord.Interaction, action: str):
+    # Check if in correct server
+    if interaction.guild.id != 1483256729876824125:
+        return await interaction.response.send_message("❌ This command is not available in this server.", ephemeral=True)
+
+    # Check permissions
+    allowed_roles = [1484013830106513620, 1485720074076553417, 1483263475630477414]
+    if not any(str(role.id) in [str(r) for r in allowed_roles] for role in interaction.user.roles):
+        return await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+
+    await interaction.response.defer(thinking=True)
+
+    channel = bot.get_channel(1485709557584887868)
+    if not channel:
+        return await interaction.followup.send("❌ Could not find the shift channel.", ephemeral=True)
+
+    if action == "start":
+        embed = discord.Embed(title="Shift Hosting Start", color=discord.Color.green())
+        embed.add_field(name="Host", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Start Time", value=f"<t:{int(interaction.created_at.timestamp())}:F>", inline=True)
+        
+        await channel.send(embed=embed)
+        await interaction.followup.send("✅ Shift started!", ephemeral=True)
+    
+    elif action == "end":
+        # Find the last bot message with shift embed
+        async for message in channel.history(limit=50):
+            if message.author == bot.user and message.embeds:
+                embed = message.embeds[0]
+                if embed.title == "Shift Hosting Start":
+                    # Check permissions to end
+                    is_owner = any(str(role.id) == "1483263475630477414" for role in interaction.user.roles)
+                    
+                    # Get host ID from embed
+                    host_id = None
+                    for field in embed.fields:
+                        if field.name == "Host":
+                            import re
+                            match = re.search(r'<@!?(\d+)>', field.value)
+                            if match:
+                                host_id = int(match.group(1))
+                            break
+                    
+                    if not is_owner and interaction.user.id != host_id:
+                        return await interaction.followup.send("❌ Only the host or ownership members can end this shift.", ephemeral=True)
+                    
+                    # Get start time
+                    start_time = None
+                    for field in embed.fields:
+                        if field.name == "Start Time":
+                            match = re.search(r'<t:(\d+):F>', field.value)
+                            if match:
+                                start_time = int(match.group(1))
+                            break
+                    
+                    if not start_time:
+                        return await interaction.followup.send("❌ Could not find start time.", ephemeral=True)
+                    
+                    # Calculate duration
+                    end_time = int(interaction.created_at.timestamp())
+                    duration_seconds = end_time - start_time
+                    hours = duration_seconds // 3600
+                    minutes = (duration_seconds % 3600) // 60
+                    duration_str = f"{hours}h {minutes}m"
+                    
+                    # Update embed
+                    embed.add_field(name="End Time", value=f"<t:{end_time}:F>", inline=True)
+                    embed.add_field(name="Duration", value=duration_str, inline=True)
+                    
+                    if is_owner and interaction.user.id != host_id:
+                        embed.add_field(name="Manually closed by", value=interaction.user.mention, inline=False)
+                    
+                    await message.edit(embed=embed)
+                    await interaction.followup.send("✅ Shift ended!", ephemeral=True)
+                    break
+        else:
+            await interaction.followup.send("❌ No active shift found.", ephemeral=True)
+
 @bot.tree.command(name="activity", description="View weekly activity")
 @app_commands.describe(user="User to check (optional, defaults to yourself)")
 async def activity(interaction: discord.Interaction, user: discord.User = None):
