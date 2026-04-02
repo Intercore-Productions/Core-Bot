@@ -1970,9 +1970,6 @@ async def shift_host(interaction: discord.Interaction, action: str):
                                 start_time = int(match.group(1))
                             break
                     
-                    if not start_time:
-                        return await interaction.followup.send("❌ Could not find start time.", ephemeral=True)
-                    
                     # Calculate duration
                     end_time = int(interaction.created_at.timestamp())
                     duration_seconds = end_time - start_time
@@ -1980,7 +1977,61 @@ async def shift_host(interaction: discord.Interaction, action: str):
                     minutes = (duration_seconds % 3600) // 60
                     duration_str = f"{hours}h {minutes}m"
                     
-                    # Update embed
+                    # Close active sessions for all players currently in-game and log their duration
+                    config = load_config(interaction.guild.id)
+                    if config and config.get("api_key"):
+                        try:
+                            headers = {"X-Api-Key": config["api_key"]}
+                            resp = requests.get("https://maple-api.marizma.games/v1/server/players", headers=headers)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                current_players = set(data.get("data", {}).get("Players", []))
+                                
+                                # Get linked users for this guild
+                                linked_users = {}
+                                try:
+                                    url = f"{SUPABASE_URL}/rest/v1/{AUTO_SHIFT_TABLE}?guild_ids=like.*{interaction.guild.id}*"
+                                    resp = requests.get(url, headers=SUPABASE_HEADERS)
+                                    if resp.status_code == 200:
+                                        records = resp.json()
+                                        for record in records:
+                                            guild_ids = record.get("guild_ids", "").split(",")
+                                            try:
+                                                idx = guild_ids.index(str(interaction.guild.id))
+                                                linked_users[int(record["roblox_id"])] = int(record["discord_id"])
+                                            except (ValueError, IndexError):
+                                                pass
+                                except Exception:
+                                    pass
+                                
+                                # Close active sessions and log duration
+                                for roblox_id, discord_id in linked_users.items():
+                                    if roblox_id in current_players and roblox_id in active_shifts and str(interaction.guild.id) in active_shifts[roblox_id]:
+                                        start_time_session = active_shifts[roblox_id][str(interaction.guild.id)]
+                                        duration = int(end_time - start_time_session)
+                                        supabase_update_activity(discord_id, interaction.guild.id, duration)
+                                        
+                                        # Remove from active shifts
+                                        del active_shifts[roblox_id][str(interaction.guild.id)]
+                                        if not active_shifts[roblox_id]:
+                                            del active_shifts[roblox_id]
+                                
+                                # Send DM to all active players
+                                for roblox_id, discord_id in linked_users.items():
+                                    if roblox_id in current_players:
+                                        try:
+                                            user = await bot.fetch_user(discord_id)
+                                            embed = discord.Embed(
+                                                title="🚨 Shift Session Ending",
+                                                description=f"The shift session in **{interaction.guild.name}** is ending.\n\nPlease finish your current activities and log out now.",
+                                                color=discord.Color.orange()
+                                            )
+                                            embed.set_footer(text="Your shift duration has been recorded.")
+                                            await user.send(embed=embed)
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
                     embed.title = "Shift Hosting End"
                     embed.color = discord.Color.red()
                     embed.add_field(name="End Time", value=f"<t:{end_time}:F>", inline=False)
