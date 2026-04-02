@@ -2073,6 +2073,22 @@ async def shift_host(interaction: discord.Interaction, action: str):
                             pass
                     embed.title = "Shift Hosting End"
                     embed.color = discord.Color.red()
+                    embed.description = ""  # Clear any existing description
+                    embed.clear_fields()  # Clear any existing fields to ensure clean state
+                    
+                    # Re-add Host field from original
+                    for field in message.embeds[0].fields:
+                        if field.name == "Host":
+                            embed.add_field(name="Host", value=field.value, inline=False)
+                            break
+                    
+                    # Re-add Start Time field from original
+                    for field in message.embeds[0].fields:
+                        if field.name == "Start Time":
+                            embed.add_field(name="Start Time", value=field.value, inline=False)
+                            break
+                    
+                    # Add End Time and Duration
                     embed.add_field(name="End Time", value=f"<t:{end_time}:F>", inline=False)
                     embed.add_field(name="Duration", value=duration_str, inline=False)
                     
