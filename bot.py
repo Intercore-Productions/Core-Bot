@@ -34,6 +34,9 @@ SUPABASE_HEADERS = {
     "Content-Type": "application/json"
 }
 
+# Active host-shift guilds (only these guilds have auto-shift polling)
+active_host_shift_guilds = set()
+
 # --- redact secret ---
 def redact_secret(value: str, show_start: int = 6, show_end: int = 4) -> str:
     try:
@@ -1928,6 +1931,7 @@ async def shift_host(interaction: discord.Interaction, action: str):
         embed.add_field(name="Host", value=interaction.user.mention, inline=False)
         embed.add_field(name="Start Time", value=f"<t:{int(interaction.created_at.timestamp())}:F>", inline=False)
         
+        active_host_shift_guilds.add(interaction.guild.id)
         await channel.send(embed=embed)
         await interaction.followup.send("✅ Shift started! Happy hosting! :)", ephemeral=True)
     
@@ -1987,6 +1991,7 @@ async def shift_host(interaction: discord.Interaction, action: str):
                         embed.add_field(name="Manually closed by", value=interaction.user.mention, inline=False)
                     
                     await message.edit(embed=embed)
+                    active_host_shift_guilds.discard(interaction.guild.id)
                     await interaction.followup.send("✅ Shift ended!", ephemeral=True)
                     break
         else:
@@ -4765,6 +4770,10 @@ async def auto_shift_monitor():
                     continue
                 activity_config = supabase_get_activity_logs(guild.id)
                 if not activity_config:
+                    continue
+
+                # Only run auto-shift monitoring while host-shift session active for this guild
+                if guild.id not in active_host_shift_guilds:
                     continue
                 
                 # Get current players
