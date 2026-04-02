@@ -1977,6 +1977,16 @@ async def shift_host(interaction: discord.Interaction, action: str):
                     minutes = (duration_seconds % 3600) // 60
                     duration_str = f"{hours}h {minutes}m"
                     
+                    # GUARANTEED: Update shift hosting embed with Host (from original), Start Time (from original), End Time, Duration
+                    # This happens regardless of whether there are active players or not
+                    embed.title = "Shift Hosting End"
+                    embed.color = discord.Color.red()
+                    embed.add_field(name="End Time", value=f"<t:{end_time}:F>", inline=False)
+                    embed.add_field(name="Duration", value=duration_str, inline=False)
+                    
+                    if is_owner and interaction.user.id != host_id:
+                        embed.add_field(name="Manually closed by", value=interaction.user.mention, inline=False)
+                    
                     # Close active sessions for all players currently in-game and log their duration
                     config = load_config(interaction.guild.id)
                     if config and config.get("api_key"):
