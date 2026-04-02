@@ -2005,31 +2005,60 @@ async def shift_host(interaction: discord.Interaction, action: str):
                                     pass
                                 
                                 # Close active sessions and log duration
+                                ended_players = []  # (discord_id, duration)
                                 for roblox_id, discord_id in linked_users.items():
                                     if roblox_id in current_players and roblox_id in active_shifts and str(interaction.guild.id) in active_shifts[roblox_id]:
                                         start_time_session = active_shifts[roblox_id][str(interaction.guild.id)]
                                         duration = int(end_time - start_time_session)
                                         supabase_update_activity(discord_id, interaction.guild.id, duration)
-                                        
+                                        ended_players.append((discord_id, duration))
+
                                         # Remove from active shifts
                                         del active_shifts[roblox_id][str(interaction.guild.id)]
                                         if not active_shifts[roblox_id]:
                                             del active_shifts[roblox_id]
-                                
-                                # Send DM to all active players
-                                for roblox_id, discord_id in linked_users.items():
-                                    if roblox_id in current_players:
-                                        try:
-                                            user = await bot.fetch_user(discord_id)
-                                            embed = discord.Embed(
-                                                title="🚨 Shift Session Ending",
-                                                description=f"The shift session in **{interaction.guild.name}** is ending.\n\nPlease finish your current activities and log out now.",
-                                                color=discord.Color.orange()
-                                            )
-                                            embed.set_footer(text="Your shift duration has been recorded.")
-                                            await user.send(embed=embed)
-                                        except Exception:
-                                            pass
+
+                                # Send “Shift Ended” embed to interrupted players
+                                notified_users = []
+                                for discord_id, duration in ended_players:
+                                    try:
+                                        user = await bot.fetch_user(discord_id)
+                                        hours = duration // 3600
+                                        minutes = (duration % 3600) // 60
+                                        embed = discord.Embed(
+                                            title="🔔 Shift Ended",
+                                            description=f"Your shift has ended in **{interaction.guild.name}**.\nDuration: {hours}h {minutes}m",
+                                            color=discord.Color.red()
+                                        )
+                                        await user.send(embed=embed)
+                                        notified_users.append(discord_id)
+                                    except Exception:
+                                        pass
+
+                                # Log in activity logs channel individual entries for each ended player
+                                activity_config = supabase_get_activity_logs(interaction.guild.id)
+                                if activity_config and activity_config.get("logs_channel_id"):
+                                    try:
+                                        logs_channel = bot.get_channel(int(activity_config.get("logs_channel_id")))
+                                        if logs_channel:
+                                            for discord_id, duration in ended_players:
+                                                try:
+                                                    hours = duration // 3600
+                                                    minutes = (duration % 3600) // 60
+                                                    log_embed = discord.Embed(
+                                                        title="📝 Shift Completed",
+                                                        description=f"Player <@{discord_id}> ended their shift in **{interaction.guild.name}**.",
+                                                        color=discord.Color.dark_blue()
+                                                    )
+                                                    log_embed.add_field(name="Player", value=f"<@{discord_id}>", inline=False)
+                                                    log_embed.add_field(name="Server", value=interaction.guild.name, inline=False)
+                                                    log_embed.add_field(name="Duration", value=f"{hours}h {minutes}m", inline=False)
+                                                    log_embed.timestamp = discord.utils.utcnow()
+                                                    await logs_channel.send(embed=log_embed)
+                                                except Exception:
+                                                    pass
+                                    except Exception:
+                                        pass
                         except Exception:
                             pass
                     embed.title = "Shift Hosting End"
