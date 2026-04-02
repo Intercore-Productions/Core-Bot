@@ -9,7 +9,6 @@ import os
 import io
 import asyncio
 import aiohttp
-import wavelink
 from dotenv import load_dotenv
 from discord import ui, TextChannel, Embed
 from typing import Optional, List, Dict
@@ -2078,138 +2077,7 @@ async def suggest(interaction: discord.Interaction, title: str, suggestion: str)
         await msg.add_reaction(emoji)
     await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
 
-# Music System
-import discord
-from discord import app_commands
-from discord.ext import commands
-import wavelink
 
-queues = {}
-
-async def get_player(interaction: discord.Interaction) -> wavelink.Player:
-    if not interaction.guild:
-        raise ValueError("Interaction has no guild.")
-
-    if not interaction.user.voice or not interaction.user.voice.channel:
-        raise ValueError("User is not connected to a voice channel.")
-
-    channel = interaction.user.voice.channel
-    player: wavelink.Player = channel.guild.voice_client  
-
-    if not player:
-        player = await channel.connect(cls=wavelink.Player)
-        queues[interaction.guild.id] = []
-
-    return player
-
-
-async def play_next(guild_id: int):
-    queue = queues.get(guild_id)
-    if not queue:
-        player: wavelink.Player = discord.utils.get(bot.voice_clients, guild__id=guild_id)
-        if player:
-            await player.disconnect()
-        return
-
-    track, user = queue.pop(0)
-
-    player: wavelink.Player = discord.utils.get(bot.voice_clients, guild__id=guild_id)
-    if not player:
-        return
-
-    await player.play(track)
-
-    channel = player.guild.system_channel or player.guild.text_channels[0]
-    await channel.send(f"🎶 Now playing: `{track.title}` requested by {user.mention}")
-
-
-@bot.tree.command(name="join", description="Join your voice channel")
-async def join(interaction: discord.Interaction):
-    try:
-        await get_player(interaction)
-        await interaction.response.send_message("✅ Joined your voice channel.")
-    except ValueError as e:
-        await interaction.response.send_message(f"❌ {e}", ephemeral=True)
-
-
-@bot.tree.command(name="play", description="Play a YouTube song")
-@app_commands.describe(query="YouTube URL or search keywords")
-async def play(interaction: discord.Interaction, query: str):
-    try:
-        player = await get_player(interaction)
-    except ValueError as e:
-        await interaction.response.send_message(f"❌ {e}", ephemeral=True)
-        return
-
-    tracks = await wavelink.YouTubeTrack.search(query)
-    if not tracks:
-        await interaction.response.send_message("❌ No results found.", ephemeral=True)
-        return
-
-    track = tracks[0]
-    queue = queues.setdefault(interaction.guild.id, [])
-    queue.append((track, interaction.user))
-
-    await interaction.response.send_message(f"🎵 Added to queue: `{track.title}`")
-
-    if not player.is_playing():
-        await play_next(interaction.guild.id)
-
-
-@bot.tree.command(name="pause", description="Pause the music")
-async def pause(interaction: discord.Interaction):
-    player: wavelink.Player = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-    if not player or not player.is_playing():
-        await interaction.response.send_message("❌ No music is playing.", ephemeral=True)
-        return
-    await player.pause(True)
-    await interaction.response.send_message("⏸️ Music paused.")
-
-
-@bot.tree.command(name="resume", description="Resume the music")
-async def resume(interaction: discord.Interaction):
-    player: wavelink.Player = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-    if not player or not player.is_paused():
-        await interaction.response.send_message("❌ Music is not paused.", ephemeral=True)
-        return
-    await player.pause(False)
-    await interaction.response.send_message("▶️ Music resumed.")
-
-
-@bot.tree.command(name="stop", description="Stop and clear the queue")
-async def stop(interaction: discord.Interaction):
-    player: wavelink.Player = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-    if not player:
-        await interaction.response.send_message("❌ Not connected to a voice channel.", ephemeral=True)
-        return
-    await player.stop()
-    queues[interaction.guild.id] = []
-    await interaction.response.send_message("⏹️ Stopped music and cleared queue.")
-
-
-@bot.tree.command(name="leave", description="Leave the voice channel")
-async def leave(interaction: discord.Interaction):
-    player: wavelink.Player = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-    if not player:
-        await interaction.response.send_message("❌ Not connected to a voice channel.", ephemeral=True)
-        return
-    await player.disconnect()
-    queues[interaction.guild.id] = []
-    await interaction.response.send_message("👋 Disconnected from the voice channel.")
-
-
-@bot.tree.command(name="queue", description="Show the current music queue")
-async def queue(interaction: discord.Interaction):
-    queue = queues.get(interaction.guild.id, [])
-    if not queue:
-        await interaction.response.send_message("🎶 The queue is empty.")
-        return
-
-    desc = "\n".join(
-        f"{i+1}. {track.title} (requested by {user.mention})" for i, (track, user) in enumerate(queue)
-    )
-    embed = discord.Embed(title="🎶 Music Queue", description=desc, color=discord.Color.blurple())
-    await interaction.response.send_message(embed=embed)
     
 @bot.tree.command(name="cpu", description="Show bot CPU usage")
 async def music_cpu(interaction: discord.Interaction):
