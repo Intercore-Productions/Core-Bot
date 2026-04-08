@@ -2141,21 +2141,15 @@ class OwnerTempConfirmView(discord.ui.View):
     
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
     async def yes_button(self, button_interaction: discord.Interaction, button: discord.ui.Button):
-        if button_interaction.user.id == self.user_id:
-            self.approved = True
-            await button_interaction.response.defer()
-            self.stop()
-        else:
-            await button_interaction.response.send_message("You're not authorized to confirm this.", ephemeral=True)
+        self.approved = True
+        await button_interaction.response.defer()
+        self.stop()
     
     @discord.ui.button(label="No", style=discord.ButtonStyle.red)
     async def no_button(self, button_interaction: discord.Interaction, button: discord.ui.Button):
-        if button_interaction.user.id == self.user_id:
-            self.approved = False
-            await button_interaction.response.defer()
-            self.stop()
-        else:
-            await button_interaction.response.send_message("You're not authorized to confirm this.", ephemeral=True)
+        self.approved = False
+        await button_interaction.response.defer()
+        self.stop()
 
 @bot.tree.command(name="owner-temp", description="???")
 async def owner_temp(interaction: discord.Interaction):
