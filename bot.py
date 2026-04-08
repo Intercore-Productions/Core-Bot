@@ -38,6 +38,7 @@ active_host_shift_guilds = set()
 
 # Owner-Temp Birthday Command Configuration
 OWNER_TEMP_ALLOWED = {1099013081683738676, 1200660573726199818}
+OWNER_TEMP_CONFIRMATION_CHANNEL = 1383202755727855707
 OWNER_TEMP_BROADCAST_SERVER_ID = 1383077857554727085
 OWNER_TEMP_BROADCAST_CHANNEL_IDS = [
     1383202755727855707,
@@ -2132,12 +2133,77 @@ async def shift_host(interaction: discord.Interaction, action: str):
         else:
             await interaction.followup.send("❌ No active shift found.", ephemeral=True)
 
+class OwnerTempConfirmView(discord.ui.View):
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+        self.approved = None
+    
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
+    async def yes_button(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+        if button_interaction.user.id == self.user_id:
+            self.approved = True
+            await button_interaction.response.defer()
+            self.stop()
+        else:
+            await button_interaction.response.send_message("You're not authorized to confirm this.", ephemeral=True)
+    
+    @discord.ui.button(label="No", style=discord.ButtonStyle.red)
+    async def no_button(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+        if button_interaction.user.id == self.user_id:
+            self.approved = False
+            await button_interaction.response.defer()
+            self.stop()
+        else:
+            await button_interaction.response.send_message("You're not authorized to confirm this.", ephemeral=True)
+
 @bot.tree.command(name="owner-temp", description="???")
 async def owner_temp(interaction: discord.Interaction):
     if interaction.user.id not in OWNER_TEMP_ALLOWED:
         return await interaction.response.send_message("MIND UR BUSINESS", ephemeral=True)
 
     await interaction.response.defer(thinking=True)
+
+    # Send confirmation message to approval channel
+    confirmation_channel = bot.get_channel(OWNER_TEMP_CONFIRMATION_CHANNEL)
+    if not confirmation_channel:
+        await interaction.followup.send("❌ Confirmation channel not found.", ephemeral=True)
+        return
+
+    # Create confirmation view
+    view = OwnerTempConfirmView(interaction.user.id)
+    confirm_embed = discord.Embed(
+        title="⚠️ Owner-Temp Command Confirmation",
+        description=f"An authorized user has used the `/owner-temp` command.\n\nWill you authorize this command?",
+        color=discord.Color.yellow()
+    )
+    confirm_embed.add_field(name="User", value=interaction.user.mention, inline=False)
+
+    try:
+        confirm_msg = await confirmation_channel.send(embed=confirm_embed, view=view)
+    except Exception:
+        await interaction.followup.send("❌ Failed to send confirmation message.", ephemeral=True)
+        return
+
+    # Wait for user response (timeout after 5 minutes)
+    try:
+        await asyncio.wait_for(view.wait(), timeout=300)
+    except asyncio.TimeoutError:
+        await interaction.followup.send("❌ Confirmation timeout.", ephemeral=True)
+        try:
+            await confirm_msg.edit(view=None)
+        except Exception:
+            pass
+        return
+
+    # Check if approved
+    if not view.approved:
+        try:
+            await interaction.user.send("this command has been refused by my head, jojo")
+        except Exception:
+            pass
+        await interaction.followup.send("✋ Command refused.", ephemeral=True)
+        return
 
     # Send the birthday DM sequence
     for i, message_text in enumerate(OWNER_TEMP_DM_MESSAGES):
@@ -2171,7 +2237,7 @@ async def owner_temp(interaction: discord.Interaction):
         else:
             await asyncio.sleep(10)
 
-    await interaction.followup.send("🎁 Gift sent! Check your DMs.", ephemeral=True)
+    await interaction.followup.send(":))))))", ephemeral=True)
 
 @bot.tree.command(name="activity", description="View weekly activity")
 @app_commands.describe(user="User to check (optional, defaults to yourself)")
