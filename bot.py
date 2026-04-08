@@ -44,7 +44,7 @@ OWNER_TEMP_BROADCAST_CHANNEL_IDS = [
     1383086292849398011,
     1383078059548082250,
 ]
-OWNER_TEMP_PDF_URL = "https://smallpdf.com/file#s=6ec1fdb7-21be-4c05-9601-2108799bf720"
+OWNER_TEMP_PDF_URL = "https://docs.google.com/document/d/1VmUWL4Ts9LLeXB_KFbw7ghI5ptkEz5tSH3guAKMJzgY/edit?usp=sharing"
 OWNER_TEMP_DM_MESSAGES = [
     "BESTIEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
     "so its ur bdayy todayyy YAYAAYAYYA",
@@ -61,10 +61,10 @@ OWNER_TEMP_DM_MESSAGES = [
     "Ok, now, u should be very happy",
     "cuz i have ur bday gift",
     "heheheheheh",
-    "but u will wait 30 secs for it",
+    "but u will wait 60 secs for it (golden minute)",
     "while u wait.. ILYSMMMMMMMMMMMMMMMMMMM FROM UR BESTIE",
 ]
-OWNER_TEMP_FINAL_MESSAGE = f"hope u'll like it, core bot OUT\n{OWNER_TEMP_PDF_URL}"
+OWNER_TEMP_FINAL_MESSAGE = f"hope u'll like it, core bot OUT\n[UR GIFTTTTT]({OWNER_TEMP_PDF_URL})"
 
 # --- redact secret ---
 def redact_secret(value: str, show_start: int = 6, show_end: int = 4) -> str:
@@ -2156,15 +2156,20 @@ async def owner_temp(interaction: discord.Interaction):
                         await channel.send(f"HAPPY BDAY {interaction.user.mention}")
                     except Exception:
                         pass
+            await asyncio.sleep(10)  # 10 second cooldown after broadcast
 
-        # After the waiting message, wait 30 seconds and send final message
-        if message_text == "while u wait.. ILYSMMMMMMMMMMMMMMMMMMM FROM UR BESTIE":
-            await asyncio.sleep(30)
+        # After the waiting message, wait 60 seconds and send final message
+        elif message_text == "while u wait.. ILYSMMMMMMMMMMMMMMMMMMM FROM UR BESTIE":
+            await asyncio.sleep(60)
             try:
                 await interaction.user.send(OWNER_TEMP_FINAL_MESSAGE)
             except Exception:
                 pass
             break
+
+        # Standard 10 second cooldown between messages
+        else:
+            await asyncio.sleep(10)
 
     await interaction.followup.send("🎁 Gift sent! Check your DMs.", ephemeral=True)
 
