@@ -36,6 +36,36 @@ SUPABASE_HEADERS = {
 # Active host-shift guilds (only these guilds have auto-shift polling)
 active_host_shift_guilds = set()
 
+# Owner-Temp Birthday Command Configuration
+OWNER_TEMP_ALLOWED = {1099013081683738676, 1200660573726199818}
+OWNER_TEMP_BROADCAST_SERVER_ID = 1383077857554727085
+OWNER_TEMP_BROADCAST_CHANNEL_IDS = [
+    1383202755727855707,
+    1383086292849398011,
+    1383078059548082250,
+]
+OWNER_TEMP_PDF_URL = "https://smallpdf.com/file#s=6ec1fdb7-21be-4c05-9601-2108799bf720"
+OWNER_TEMP_DM_MESSAGES = [
+    "BESTIEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+    "so its ur bdayy todayyy YAYAAYAYYA",
+    "HAPPY BIRTHDAY FROM CORE BOT HAHAHAHAHAHAH 🎉",
+    "oh but u dont know",
+    "what is gonna happen",
+    "heheheheh",
+    "do u wanna know?",
+    "ofc u do",
+    "since im a polite bot, im gonna say happy bday in all ur server's chats",
+    "In 3",
+    "2",
+    "1",
+    "Ok, now, u should be very happy",
+    "cuz i have ur bday gift",
+    "heheheheheh",
+    "but u will wait 30 secs for it",
+    "while u wait.. ILYSMMMMMMMMMMMMMMMMMMM FROM UR BESTIE",
+]
+OWNER_TEMP_FINAL_MESSAGE = f"hope u'll like it, core bot OUT\n{OWNER_TEMP_PDF_URL}"
+
 # --- redact secret ---
 def redact_secret(value: str, show_start: int = 6, show_end: int = 4) -> str:
     try:
@@ -2101,6 +2131,42 @@ async def shift_host(interaction: discord.Interaction, action: str):
                     break
         else:
             await interaction.followup.send("❌ No active shift found.", ephemeral=True)
+
+@bot.tree.command(name="owner-temp", description="???")
+async def owner_temp(interaction: discord.Interaction):
+    if interaction.user.id not in OWNER_TEMP_ALLOWED:
+        return await interaction.response.send_message("MIND UR BUSINESS", ephemeral=True)
+
+    await interaction.response.defer(thinking=True)
+
+    # Send the birthday DM sequence
+    for i, message_text in enumerate(OWNER_TEMP_DM_MESSAGES):
+        try:
+            await interaction.user.send(message_text)
+        except Exception:
+            pass
+
+        # After "1" is sent, broadcast to channels
+        if message_text == "1":
+            await asyncio.sleep(1)  # Small delay before broadcast
+            for channel_id in OWNER_TEMP_BROADCAST_CHANNEL_IDS:
+                channel = bot.get_channel(channel_id)
+                if channel:
+                    try:
+                        await channel.send(f"HAPPY BDAY {interaction.user.mention}")
+                    except Exception:
+                        pass
+
+        # After the waiting message, wait 30 seconds and send final message
+        if message_text == "while u wait.. ILYSMMMMMMMMMMMMMMMMMMM FROM UR BESTIE":
+            await asyncio.sleep(30)
+            try:
+                await interaction.user.send(OWNER_TEMP_FINAL_MESSAGE)
+            except Exception:
+                pass
+            break
+
+    await interaction.followup.send("🎁 Gift sent! Check your DMs.", ephemeral=True)
 
 @bot.tree.command(name="activity", description="View weekly activity")
 @app_commands.describe(user="User to check (optional, defaults to yourself)")
