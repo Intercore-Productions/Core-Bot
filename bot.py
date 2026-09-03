@@ -36,39 +36,6 @@ SUPABASE_HEADERS = {
 # Active host-shift guilds (only these guilds have auto-shift polling)
 active_host_shift_guilds = set()
 
-# Owner-Temp Birthday Command Configuration
-OWNER_TEMP_ALLOWED = {1099013081683738676, 1200660573726199818}
-OWNER_TEMP_CONFIRMATION_CHANNEL = 1383202755727855707
-OWNER_TEMP_BROADCAST_SERVER_ID = 1483256729876824125
-OWNER_TEMP_BROADCAST_CHANNEL_IDS = [
-    1483298612409536543,
-    1483300118030454855,
-    1483300749076336710,
-    1483301310601101413,
-    1483302527670816839,
-]
-OWNER_TEMP_PDF_URL = "https://docs.google.com/document/d/1VmUWL4Ts9LLeXB_KFbw7ghI5ptkEz5tSH3guAKMJzgY/edit?usp=sharing"
-OWNER_TEMP_DM_MESSAGES = [
-    "BESTIEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
-    "so its ur bdayy todayyy YAYAAYAYYA",
-    "HAPPY BIRTHDAY FROM CORE BOT HAHAHAHAHAHAH 🎉",
-    "oh but u dont know",
-    "what is gonna happen",
-    "heheheheh",
-    "do u wanna know?",
-    "ofc u do",
-    "since im a polite bot, im gonna say happy bday in all ur server's chats",
-    "In 3",
-    "2",
-    "1",
-    "Ok, now, u should be very happy",
-    "cuz i have ur bday gift",
-    "heheheheheh",
-    "but u will wait 60 secs for it (golden minute)",
-    "while u wait.. ILYSMMMMMMMMMMMMMMMMMMM FROM UR BESTIE",
-]
-OWNER_TEMP_FINAL_MESSAGE = f"hope u'll like it, core bot OUT\n[UR GIFTTTTT]({OWNER_TEMP_PDF_URL})"
-
 # --- redact secret ---
 def redact_secret(value: str, show_start: int = 6, show_end: int = 4) -> str:
     try:
